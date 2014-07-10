@@ -1,0 +1,15 @@
+# var x = 12
+# print(x,x,3.3)
+# print(nil)
+# print("Hello\nworld!")
+# print(3)
+# print(true)
+# print(false)
+
+if (0) {
+	print("first block")
+} else if (1) {
+	print("second block")
+} else {
+	print("third block")
+}
