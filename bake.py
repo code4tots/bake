@@ -278,7 +278,7 @@ class ListExpression(Expression):
 		self.expressions = expressions
 	
 	def __str__(self):
-		return 'new List({'+','.join(map(str,self.expressions))+'})'
+		return '(new List({'+','.join(map(str,self.expressions))+'}))'
 
 class FunctionCallExpression(Expression):
 	def __init__(self,expression,arguments):

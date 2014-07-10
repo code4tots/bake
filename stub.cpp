@@ -117,6 +117,16 @@ struct Str : Object {
 struct List : Object {
 	std::vector<Pointer> x;
 	List(Args a) : Object(LIST_TYPE), x(a) {}
+	List(std::vector<Pointer> v) : Object(LIST_TYPE), x(v) {}
+	
+	Pointer add(Pointer y) {
+		if (y->type == LIST_TYPE) {
+			std::vector<Pointer> v(x);
+			v.insert(v.end(),((List*)y.x)->x.begin(),((List*)y.x)->x.end());
+			return new List(v);
+		}
+		return not_supported();
+	}
 	
 	Pointer repr() {
 		std::string s("[");
