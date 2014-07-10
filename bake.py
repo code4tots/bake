@@ -165,6 +165,14 @@ class Subs(Expr):
 	def __str__(self):
 		return str(self.a)+'->subscript('+str(self.i)+')'
 
+class AsgnExpr(Expr):
+	def __init__(self,name,expr):
+		self.name = name
+		self.expr = expr
+	
+	def __str__(self):
+		return '('+str(self.name)+' = ('+str(self.expr)+'))'
+
 def parse(s):
 	ts = lex(s)      # list of tokens
 	i = [0]          # current token index in the parse
@@ -254,6 +262,19 @@ def parse(s):
 				e = Subs(e,a)
 		
 		return e
+	
+	def asgnexpr():
+		j = i[0]
+		
+		n = word()
+		if not n:
+			return
+		
+		if not consume('='):
+			i[0] = j
+			return
+		
+		
 	
 	def expr():
 		return fexpr()
