@@ -117,6 +117,17 @@ struct Str : Object {
 struct List : Object {
 	std::vector<Pointer> x;
 	List(Args a) : Object(LIST_TYPE), x(a) {}
+	
+	Pointer repr() {
+		std::string s("[");
+		for (size_t i = 0; i < x.size(); i++) {
+			if (i)
+				s += ", ";
+			s += x[i]->cxxstr();
+		}
+		s += "]";
+		return new Str(s);
+	}
 };
 
 struct Set : Object {
@@ -185,6 +196,17 @@ Pointer Int::truth() { return x ? Bool::True : Bool::False; }
 Pointer Int::repr() { return new Str(x.get_str()); }
 
 Pointer Float::repr() { return new Str(std::to_string(x)); }
+
+
+
+
+
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+// static member declarations
 
 Pointer Nil::nil(new Nil());
 Pointer Nil::repr() { return new Str("nil"); }
