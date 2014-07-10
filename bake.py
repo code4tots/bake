@@ -1,392 +1,326 @@
-"half-baked programming language"
-
-from sys import stderr
-
-with open('bakestub.cpp') as f:
-	cxxstub = f.read()
-
-symbols = tuple(reversed(sorted([
-	'(', ')', '{', '}', '[', ']', ',',
-	'='
-])))
-
-keywords = set([
-	'var',
-	'if', 'else'
-])
-
 import re
+from ply import lex, yacc
 
-comment_regex      = r'\#[^\n]*'
-newline_regex      = r'\n'
-space_regex        = r'[ \t]+'
-float_regex        = r'\d+\.\d*'
-int_regex          = r'\d+'
-word_regex         = r'\w+'
-single_quote_regex = r"\'(?:[^']|(?:\\\'))*\'"
-double_quote_regex = r'\"(?:[^"]|(?:\\\"))*\"'
-symbol_regex = '|'.join('(?:'+re.escape(symbol)+')' for symbol in symbols)
-
-master_regex = '(?:'+'|'.join('(?:'+r+')' for r in(
-	comment_regex,
-	newline_regex,
-	space_regex,
-	float_regex,
-	int_regex,
-	word_regex,
-	single_quote_regex,
-	double_quote_regex,
-	symbol_regex))+')'
-
-
-sanity_regex       = re.compile(master_regex + '*')
-master_regex       = re.compile(master_regex)
-not_space_regex    = re.compile(r'\S+')
-newline_regex      = re.compile(newline_regex)
-space_regex        = re.compile(space_regex)
-float_regex        = re.compile(float_regex)
-int_regex          = re.compile(int_regex)
-word_regex         = re.compile(word_regex)
-quote_regex        = re.compile('(?:'+single_quote_regex+'|'+double_quote_regex+')')
-single_quote_regex = re.compile(single_quote_regex)
-double_quote_regex = re.compile(double_quote_regex)
-symbol_regex       = re.compile(symbol_regex)
-
-def lex(s):
-	m = sanity_regex.match(s)
-	e = m.end()
-	if e != len(s):
-		t = not_space_regex.match(s,e).group(0)
-		raise Exception('unrecognized token: ' + repr(t))
+class Lexer(object):
+	keywords = ('var', 'if', 'else')
 	
-	m = master_regex.findall(s)
-	ts = [t for t in m if t and (t == '\n' or not t.isspace()) and t[0] != '#']
-	nts = []
-	for t in ts:
-		if t != '\n' or (nts and nts[-1] != '\n'):
-			nts.append(t)
-	return nts
-
-class Include(str):
-	pass
-
-class Stmt(object):
-	indentation = '\t'
-
-class BlockStmt(Stmt):
-	def __init__(self,stmts):
-		self.stmts = stmts
+	symbols = {
+		',' : 'COMMA',
+		'(' : 'LPAR',
+		')' : 'RPAR',
+		'[' : 'LBKT',
+		']' : 'RBKT',
+		'{' : 'LBCE',
+		'}' : 'RBCE',
+		'=' : 'EQ',
+		'+' : 'PLUS',
+		'-' : 'MINUS',
+		'*' : 'STAR',
+		'/' : 'SLASH'
+	}
 	
-	def __str__(self,depth=0):
-		i = self.indentation * depth
-		return i+'{\n'+''.join(s.__str__(depth+1) for s in self.stmts)+i+'}\n'
-
-class ExprStmt(Stmt):
-	def __init__(self,expr):
-		self.expr = expr
+	tokens = (('NAME','INT','FLOAT','STRING','NEWLINE')+
+		tuple(k.upper() for k in keywords) +
+		tuple(symbols.values()))
 	
-	def __str__(self,depth=0):
-		return self.indentation * depth + str(self.expr) + ';\n'
-
-class Decl(Stmt):
-	def __init__(self,name,expr=None):
-		self.name = name
-		self.expr = expr
+	t_ignore = ' \t'
 	
-	def __str__(self,depth=0):
-		s = self.indentation * depth + 'Object * ' + str(self.name)
-		if self.expr is not None:
-			s += ' = ' + str(self.expr)
-		s += ';\n'
-		return s
-
-class IfStmt(Stmt):
-	def __init__(self,expr,iblk,eblk):
-		self.expr = expr
-		self.iblk = iblk
-		self.eblk = eblk
+	def t_NEWLINE(self,t):
+		r'\n+'
+		t.lexer.lineno += len(t.value)
+		return t
 	
-	def __str__(self,depth=0):
-		s  = self.indentation*depth + 'if ('+str(self.expr)+'->cxxbool())\n'
-		s += self.iblk.__str__(depth)
-		if self.eblk:
-			s += self.indentation*depth + 'else\n'
-			s += self.eblk.__str__(depth)
-		return s
+	def t_COMMENT(self,t):
+		r'\#[^\n]*'
+	
+	def t_NUMBER(self,t):
+		r'\d+(?:\.\d*)?'
+		t.type = 'FLOAT' if '.' in t.value else 'INT'
+		return t
+	
+	def t_NAME(self,t):
+		r'(?!r\"|r\'|\d)\w+'
+		if t.value in self.keywords:
+			t.type = t.value.upper()
+		return t
+	
+	t_STRING = '|'.join('(?:'+s+')' for s in (
+		r'\"(?:[^"]|(?:\\\"))*\"',
+		r"\'(?:[^']|(?:\\\'))*\'",
+		r'r\"[^"]*\"',
+		r"r\'[^']*\'"))
+	
+	def __init__(self, **kwargs):
+		self.lexer = lex.lex(module=self, **kwargs)
+	
+	def token(self):
+		return self.lexer.token()
+	
+	def input(self,data):
+		return self.lexer.input(data)
+	
+	def test(self,data):
+		self.lexer.input(data)
+		while True:
+			tok = self.lexer.token()
+			if not tok: break
+			print(tok)
+
+for t, n in Lexer.symbols.items():
+	setattr(Lexer,'t_'+n,re.escape(t))
+
+class Parser(object):
+	lexer = Lexer()
+	tokens = Lexer.tokens
+	
+	precedence = (
+		('left', 'PLUS', 'MINUS'),
+		('left', 'STAR', 'SLASH'),
+		('right', 'UMINUS'),
+		('right', 'LPAR')
+	)
+	
+	start = 'all'
+	
+	def p_all(self,t):
+		'all : statements'
+		t[0] = 'void bake() {\n' + ''.join(s.__str__(1) for s in t[1]) + '}\n'
+	
+	def p_statements_base(self,t):
+		'statements : statement'
+		t[0] = [t[1]]
+	
+	def p_statements_inductive_step(self,t):
+		'statements : statements statement'
+		t[0] = t[1]
+		t[0].append(t[2])
+	
+	def p_statement_block(self,t):
+		'statement : LBCE statements RBCE'
+		t[0] = BlockStatement(t[2])
+	
+	def p_statement_expression(self,t):
+		'statement : expression NEWLINE'
+		t[0] = ExpressionStatement(t[1])
+	
+	def p_statement_declaration(self,t):
+		'statement : VAR NAME EQ expression NEWLINE'
+		t[0] = [t[2],t[4]]
+	
+	def p_if(self,t):
+		'if_statement : IF LPAR expression RPAR statement'
+		t[0] = IfStatement(t[3],t[5])
+	
+	def p_if_else(self,t):
+		'if_else_statement : if_statement ELSE statement'
+		t[0] = IfElseStatement(t[1],t[3])
+	
+	def p_statement_if(self,t):
+		"""statement : if_statement
+		             | if_else_statement"""
+		# !!!!!!!!!!!!!!!!!!!!!!!!!!! Brings about a shift/reduce conflict.
+		# The default behavior is to shift, which is the correct one in this case
+		# (if ELSE is available, I want to shift and get an if_else_statement).
+		t[0] = t[1]
+	
+	def p_statement_empty(self,t):
+		'statement : NEWLINE'
+		t[0] = EmptyStatement()
+	
+	def p_expression_int(self,t):
+		'expression : INT'
+		t[0] = IntExpression(t[1])
+	
+	def p_expression_float(self,t):
+		'expression : FLOAT'
+		t[0] = FloatExpression(t[1])
+	
+	def p_expression_string(self,t):
+		'expression : STRING'
+		t[0] = StringExpression(t[1])
+	
+	def p_expression_name(self,t):
+		'expression : NAME'
+		t[0] = NameExpression(t[1])
+	
+	def p_expression_list(self,t):
+		'expression : LBKT expression_list RBKT'
+		t[0] = ListExpression(t[2])
+	
+	def p_expression_group(self,t):
+		'expression : LPAR expression RPAR'
+		t[0] = t[2]
+	
+	def p_expression_add(self,t):
+		'expression : expression PLUS expression'
+		t[0] = AddExpression(t[1],t[3])
 		
-class EmtpyStmt(Stmt):
+	def p_expression_subtract(self,t):
+		'expression : expression MINUS expression'
+		t[0] = SubtractExpression(t[1],t[3])
+		
+	def p_expression_multiply(self,t):
+		'expression : expression STAR expression'
+		t[0] = MultiplyExpression(t[1],t[3])
+		
+	def p_expression_divide(self,t):
+		'expression : expression SLASH expression'
+		t[0] = DivideExpression(t[1],t[3])
+	
+	def p_expression_minus(self,t):
+		'expression : MINUS expression %prec UMINUS'
+		t[0] = MinusExpression(t[2])
+	
+	def p_expression_function_call(self,t):
+		'expression : expression LPAR expression_list RPAR'
+		t[0] = FunctionCallExpression(t[1],t[3])
+	
+	def p_expression_list_base(self,t):
+		'expression_list : expression'
+		t[0] = [t[1]]
+	
+	def p_expression_list_inductive_step(self,t):
+		'expression_list : expression_list COMMA expression'
+		t[0] = t[1]
+		t[0].append(t[3])
+	
+	def __init__(self,**kargs):
+		self.parser = yacc.yacc(module=self, **kargs)
+	
+	def parse(self,data):
+		return self.parser.parse(data)
+
+
+class Statement(object):
+	_indentation = '\t'
+	
+	def indentation(self,depth):
+		return self._indentation * depth
+
+class BlockStatement(Statement):
+	def __init__(self,statements):
+		self.statements = statements
+	
+	def __str__(self,depth=0):
+		return (
+			self.indentation(depth) + '{\n' +
+			''.join(s.__str__(depth+1) for s in self.statements) +
+			self.indentation(depth) + '}\n')
+
+class IfStatement(Statement):
+	def __init__(self,condition,if_block):
+		self.condition = condition
+		self.if_block = if_block
+	
+	def __str__(self,depth=0):
+		return (
+			self.indentation(depth) + 'if (' + str(self.condition) + ')\n' +
+			self.if_block.__str__(depth+1))
+	
+class IfElseStatement(Statement):
+	def __init__(self,if_statement,else_block):
+		self.if_statement = if_statement
+		self.else_block = else_block
+	
+	def __str__(self,depth=0):
+		return (
+			self.if_statement.__str__(depth) +
+			self.indentation(depth) + 'else\n' +
+			self.else_block.__str__(depth+1))
+
+class ExpressionStatement(Statement):
+	def __init__(self,expression):
+		self.expression = expression
+	
+	def __str__(self,depth=0):
+		return self.indentation(depth) + str(self.expression) + ';\n'
+
+class EmptyStatement(Statement):
 	def __str__(self,depth=0):
 		return ''
-		
-class Expr(object):
+
+class Expression(object):
 	pass
 
-class Name(Expr):
+class IntExpression(Expression):
+	def __init__(self,integer):
+		self.integer = integer
+	
+	def __str__(self):
+		return '(new Int('+self.integer+'))'
+
+class FloatExpression(Expression):
+	def __init__(self,floating):
+		self.floating = floating
+	
+	def __str__(self):
+		return '(new Float('+self.floating+'))'
+
+class StringExpression(Expression):
+	def __init__(self,string):
+		self.string = string
+	
+	def to_c_string(self,string):
+		return '"'+''.join('\\'+hex(ord(c))[1:] for c in string)+'"'
+	
+	def __str__(self):
+		return '(new Str('+self.to_c_string(eval(self.string))+'))'
+
+class NameExpression(Expression):
 	def __init__(self,name):
 		self.name = name
 	
 	def __str__(self):
 		return 'ingredient_x' + self.name
 
-class Int(Expr):
-	def __init__(self,i):
-		self.i = i
+class ListExpression(Expression):
+	def __init__(self,expressions):
+		self.expressions = expressions
 	
 	def __str__(self):
-		return '(new Int(' + str(self.i) + '))'
+		return 'new List({'+','.join(map(str,self.expressions))+'})'
 
-class Float(Expr):
-	def __init__(self,f):
-		self.f = f
+class FunctionCallExpression(Expression):
+	def __init__(self,expression,arguments):
+		self.expression = expression
+		self.arguments = arguments
 	
 	def __str__(self):
-		return '(new Float(' + str(self.f) + '))'
+		return '%s->call({%s})'%(self.expression,','.join(map(str,self.arguments)))
 
-class String(Expr):
-	def __init__(self,s):
-		self.s = s
+class MethodExpression(Expression):
+	def __init__(self,expression,argument=''):
+		self.expression = expression
+		self.argument = argument
 	
 	def __str__(self):
-		return '(new Str(' + str(self.s) + '))'
+		return '%s->%s(%s)'%(self.expression,self.method_name,self.argument)
 
-class Call(Expr):
-	def __init__(self,f,args):
-		self.f = f
-		self.args = args
-		
-	def __str__(self):
-		return str(self.f)+'->call({'+','.join(map(str,self.args))+'})'
+class AddExpression(MethodExpression):
+	method_name = 'add'
 
-class Subs(Expr):
-	def __init__(self,a,i):
-		self.a = a
-		self.i = i
-	
-	def __str__(self):
-		return str(self.a)+'->subscript('+str(self.i)+')'
+class SubtractExpression(MethodExpression):
+	method_name = 'subtract'
 
-class AsgnExpr(Expr):
-	def __init__(self,name,expr):
-		self.name = name
-		self.expr = expr
-	
-	def __str__(self):
-		return '('+str(self.name)+' = ('+str(self.expr)+'))'
+class MinusExpression(MethodExpression):
+	method_name = 'minus'
 
-def parse(s):
-	ts = lex(s)      # list of tokens
-	i = [0]          # current token index in the parse
-	
-	def tk(di=0):
-		j = i[0] + di
-		return ts[j] if j < len(ts) else ''
-	
-	def ntk():
-		t = tk()
-		if i[0] < len(s):
-			i[0] += 1
-		return t
-	
-	def consume(t):
-		if tk() == t:
-			return ntk()
-	
-	def float_(): # float token
-		if float_regex.match(tk()):
-			return Float(ntk())
-	
-	def int_(): # int token
-		if int_regex.match(tk()):
-			return Int(ntk())
-	
-	def string():
-		if quote_regex.match(tk()):
-			return String(ntk())
-	
-	def word(): # word token
-		if word_regex.match(tk()) and tk() not in keywords:
-			return Name(ntk())
-	
-	def parexpr(): # parenthetical expressions
-		j = i[0]
-		if consume('('):
-			e = expr()
-			if not e or tk() != ')':
-				i[0] = j
-				return
-			ntk() # consume ')'
-			return e
-	
-	def prexpr(): # primary expressions
-		return float_() or int_() or string() or word() or parexpr()
-	
-	def fexpr(): # function calls and subscripts
-		e = prexpr()
-		
-		if not e:
-			return
-		
-		while tk() in ['(','[']:
-			checkpoint = i[0]
-			if consume('('):
-				args = []
-				if tk() != ')':
-					a = expr()
-					args.append(a)
-					if not a:
-						i[0] = checkpoint
-						return e
-					while tk() == ',':
-						ntk()
-						a = expr()
-						args.append(a)
-						if not a:
-							i[0] = checkpoint
-							return e
-				if not consume(')'):
-					i[0] = checkpoint
-					return e
-				
-				e = Call(e,args)
-			
-			elif consume('['):
-				a = expr()
-				if not a:
-					i[0] = checkpoint
-					return e
-				
-				if not consume(']'):
-					i[0] = checkpoint
-					return e
-				
-				e = Subs(e,a)
-		
-		return e
-	
-	def asgnexpr():
-		j = i[0]
-		
-		n = word()
-		if not n:
-			return
-		
-		if not consume('='):
-			i[0] = j
-			return
-		
-		
-	
-	def expr():
-		return fexpr()
-	
-	def exprstmt():
-		j = i[0]
-		e = expr()
-		if not e:
-			return
-		
-		if not consume('\n'):
-			i[0] = j
-			return
-		
-		return ExprStmt(e)
-	
-	def decl():
-		j = i[0]
-		
-		if not consume('var'):
-			return
-		
-		n = word()
-		if not n:
-			i[0] = j
-			return
-		
-		e = None
-		if consume('='):
-			e = expr()
-			if not e:
-				i[0] = j
-				return
-		
-		if not consume('\n'):
-			i[0] = j
-			return
-		
-		return Decl(n,e)
-	
-	def blockstmt():
-		j = i[0]
-		if consume('{'):
-			ss = []
-			st = stmt()
-			while st:
-				ss.append(st)
-				st = stmt()
-			if not consume('}'):
-				i[0] = j
-				return
-			return BlockStmt(ss)
-	
-	def ifstmt():
-		j = i[0]
-		if consume('if'):
-			if not consume('('):
-				i[0] = j
-				return
-			
-			e = expr()
-			if not e or not consume(')'):
-				i[0] = j
-				return
-			
-			b = stmt()
-			if not b:
-				i[0] = j
-				return
-			
-			eb = None
-			if consume('else'):
-				eb = stmt()
-				if not b:
-					i[0] = j
-					return
-			
-			return IfStmt(e,b,eb)
-	
-	def emptystmt():
-		if consume('\n'):
-			return EmtpyStmt()
-	
-	def stmt():
-		return emptystmt() or blockstmt() or ifstmt() or exprstmt() or decl()
-	
-	sts = []     # list of parsed statements
-	st = stmt()
-	while st:
-		sts.append(st)
-		st = stmt()
-	
-	return sts
+class MultiplyExpression(MethodExpression):
+	method_name = 'multiply'
 
-def translate(s):
-	stmts = parse(s)
-	incs  = [stmt for stmt in stmts if     isinstance(stmt,Include)]
-	stmts = [stmt for stmt in stmts if not isinstance(stmt,Include)]
-	
-	code = cxxstub
-	
-	for inc in incs:
-		with open(inc+'.cpp') as f:
-			code += f.read()
-	
-	code += 'void bake() {\n'
-	code += ''.join(stmt.__str__(1) for stmt in stmts)
-	code += '}\n'
-	
-	return code
+class DivideExpression(Expression):
+	method_name = 'divide'
+
 
 if __name__ == '__main__':
-	from sys import stdin
-	print(translate(stdin.read()))
-
+	with open('stub.cpp') as f:
+		stub = f.read()
+	
+	with open('cake.bake') as f:
+		code = f.read()
+	
+	code = Parser().parse(code)
+	
+	with open('cake.cpp', 'w') as f:
+		f.write(stub)
+		f.write(code)
