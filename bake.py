@@ -19,6 +19,7 @@ class Lexer(object):
 		'/' : 'SLASH',
 		
 		'==' : 'EQU',
+		'!=' : 'NEQ'
 	}
 	
 	tokens = (('NAME','INT','FLOAT','STRING','NEWLINE')+
@@ -76,7 +77,7 @@ class Parser(object):
 	tokens = Lexer.tokens
 	
 	precedence = (
-		('left', 'EQU'),
+		('left', 'EQU', 'NEQ'),
 		('left', 'PLUS', 'MINUS'),
 		('left', 'STAR', 'SLASH'),
 		('right', 'UMINUS'),
@@ -87,7 +88,6 @@ class Parser(object):
 	
 	def p_all(self,t):
 		'all : statements'
-		print([str(x) for x in t[1]])
 		t[0] = 'void bake() {\n' + ''.join(s.__str__(1) for s in t[1]) + '}\n'
 	
 	def p_statements_base(self,t):
@@ -99,9 +99,13 @@ class Parser(object):
 		t[0] = t[1]
 		t[0].append(t[2])
 	
-	def p_statement_block(self,t):
-		'statement : LBCE statements RBCE'
+	def p_block(self,t):
+		'block_statement : LBCE statements RBCE'
 		t[0] = BlockStatement(t[2])
+	
+	def p_statement_block(self,t):
+		'statement : block_statement'
+		t[0] = t[1]
 	
 	def p_statement_expression(self,t):
 		'statement : expression NEWLINE'
@@ -112,19 +116,16 @@ class Parser(object):
 		t[0] = [t[2],t[4]]
 	
 	def p_if(self,t):
-		'if_statement : IF LPAR expression RPAR statement'
-		t[0] = IfStatement(t[3],t[5])
+		'if_statement : IF expression block_statement'
+		t[0] = IfStatement(t[2],t[3])
 	
 	def p_if_else(self,t):
-		'if_else_statement : if_statement ELSE statement'
+		'if_else_statement : if_statement ELSE block_statement'
 		t[0] = IfElseStatement(t[1],t[3])
 	
 	def p_statement_if(self,t):
 		"""statement : if_statement
 		             | if_else_statement"""
-		# !!!!!!!!!!!!!!!!!!!!!!!!!!! Brings about a shift/reduce conflict.
-		# The default behavior is to shift, which is the correct one in this case
-		# (if ELSE is available, I want to shift and get an if_else_statement).
 		t[0] = t[1]
 	
 	def p_statement_empty(self,t):
@@ -183,6 +184,10 @@ class Parser(object):
 		'expression : expression EQU expression'
 		t[0] = EqualExpression(t[1],t[3])
 	
+	def p_expression_not_equal(self,t):
+		'expression : expression NEQ expression'
+		t[0] = NotEqualExpression(t[1],t[3])
+	
 	def p_expression_list_base(self,t):
 		'expression_list : expression'
 		t[0] = [t[1]]
@@ -223,7 +228,7 @@ class IfStatement(Statement):
 	def __str__(self,depth=0):
 		return (
 			self.indentation(depth) + 'if (' + str(self.condition) + '->cxxbool())\n' +
-			self.if_block.__str__(depth+1))
+			self.if_block.__str__(depth))
 	
 class IfElseStatement(Statement):
 	def __init__(self,if_statement,else_block):
@@ -234,7 +239,7 @@ class IfElseStatement(Statement):
 		return (
 			self.if_statement.__str__(depth) +
 			self.indentation(depth) + 'else\n' +
-			self.else_block.__str__(depth+1))
+			self.else_block.__str__(depth))
 
 class ExpressionStatement(Statement):
 	def __init__(self,expression):
@@ -321,6 +326,9 @@ class DivideExpression(MethodExpression):
 
 class EqualExpression(MethodExpression):
 	method_name = 'equal'
+
+class NotEqualExpression(MethodExpression):
+	method_name = 'not_equal'
 
 if __name__ == '__main__':
 	with open('stub.cpp') as f:

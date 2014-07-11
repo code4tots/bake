@@ -58,6 +58,9 @@ struct Object {
 	virtual Pointer truth();
 	virtual Pointer repr();
 	
+	// conveniences
+	Pointer not_equal(Pointer);
+	
 	// C++ interface
 	bool cxxbool();
 	mpz_class cxxint();
@@ -191,6 +194,7 @@ Pointer Object::equal(Pointer p) { return this == p.x ? Bool::True : Bool::False
 Pointer Object::less(Pointer p) { return Bool::False; }
 Pointer Object::truth() { return Bool::True; }
 Pointer Object::repr() { return new Str("<not yet implemented>"); }
+Pointer Object::not_equal(Pointer p) { return equal(p)->cxxbool() ? Bool::False : Bool::True; }
 bool Object::cxxbool() { return ((Bool*)truth().x)->x; }
 mpz_class Object::cxxint() { return ((Int*)hash().x)->x; }
 std::string Object::cxxstr() { return ((Str*)repr().x)->x; }
