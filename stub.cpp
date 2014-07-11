@@ -109,6 +109,7 @@ struct Float : Object {
 	double x;
 	Float(double f) : Object(FLOAT_TYPE), x(f) {}
 	
+	Pointer truth();
 	Pointer repr();
 };
 
@@ -230,6 +231,7 @@ Pointer Int::equal(Pointer p) {
 Pointer Int::truth() { return x ? Bool::True : Bool::False; }
 Pointer Int::repr() { return new Str(x.get_str()); }
 
+Pointer Float::truth() { return x != 0 ? Bool::True : Bool::False; }
 Pointer Float::repr() { return new Str(std::to_string(x)); }
 
 
