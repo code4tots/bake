@@ -16,7 +16,9 @@ class Lexer(object):
 		'+' : 'PLUS',
 		'-' : 'MINUS',
 		'*' : 'STAR',
-		'/' : 'SLASH'
+		'/' : 'SLASH',
+		
+		'==' : 'EQU',
 	}
 	
 	tokens = (('NAME','INT','FLOAT','STRING','NEWLINE')+
@@ -74,6 +76,7 @@ class Parser(object):
 	tokens = Lexer.tokens
 	
 	precedence = (
+		('left', 'EQU'),
 		('left', 'PLUS', 'MINUS'),
 		('left', 'STAR', 'SLASH'),
 		('right', 'UMINUS'),
@@ -84,6 +87,7 @@ class Parser(object):
 	
 	def p_all(self,t):
 		'all : statements'
+		print([str(x) for x in t[1]])
 		t[0] = 'void bake() {\n' + ''.join(s.__str__(1) for s in t[1]) + '}\n'
 	
 	def p_statements_base(self,t):
@@ -175,6 +179,10 @@ class Parser(object):
 		'expression : expression LPAR expression_list RPAR'
 		t[0] = FunctionCallExpression(t[1],t[3])
 	
+	def p_expression_equal(self,t):
+		'expression : expression EQU expression'
+		t[0] = EqualExpression(t[1],t[3])
+	
 	def p_expression_list_base(self,t):
 		'expression_list : expression'
 		t[0] = [t[1]]
@@ -214,7 +222,7 @@ class IfStatement(Statement):
 	
 	def __str__(self,depth=0):
 		return (
-			self.indentation(depth) + 'if (' + str(self.condition) + ')\n' +
+			self.indentation(depth) + 'if (' + str(self.condition) + '->cxxbool())\n' +
 			self.if_block.__str__(depth+1))
 	
 class IfElseStatement(Statement):
@@ -308,9 +316,11 @@ class MinusExpression(MethodExpression):
 class MultiplyExpression(MethodExpression):
 	method_name = 'multiply'
 
-class DivideExpression(Expression):
+class DivideExpression(MethodExpression):
 	method_name = 'divide'
 
+class EqualExpression(MethodExpression):
+	method_name = 'equal'
 
 if __name__ == '__main__':
 	with open('stub.cpp') as f:

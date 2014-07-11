@@ -12,5 +12,5 @@ cake.cpp: cake.bake stub.cpp bake.py
 	python3 bake.py
 
 a.out: cake.cpp
-	g++ cake.cpp -I/usr/local/include/ --std=c++11 -lgmpxx -lgmp -L/usr/local/lib -Wall -Wfatal-errors
+	g++ cake.cpp -I/usr/local/include/ --std=c++11 -lgmpxx -lgmp -L/usr/local/lib -Wall -Wfatal-errors -Wpedantic
 

@@ -36,7 +36,7 @@ struct Pointer {
 namespace std {
 	template <> struct hash<Pointer> { size_t operator()(const Pointer& p) const; };
 	template <> struct equal_to<Pointer> { bool operator()(const Pointer& a, const Pointer& b) const; };
-	template <> struct less<Pointer>;
+	template <> struct less<Pointer> { bool operator()(const Pointer& a, const Pointer& b) const; };
 	ostream& operator<<(ostream&,const Pointer);
 }
 
@@ -53,7 +53,8 @@ struct Object {
 	
 	// utilities
 	virtual Pointer hash();
-	virtual Pointer equal(Pointer p);
+	virtual Pointer equal(Pointer);
+	virtual Pointer less(Pointer);
 	virtual Pointer truth();
 	virtual Pointer repr();
 	
@@ -94,8 +95,9 @@ struct Int : Object {
 	Int(long i) : Object(INT_TYPE), x(i) {}
 	Int(mpz_class i) : Object(INT_TYPE), x(i) {}
 	
-	Pointer add(Pointer p);
+	Pointer add(Pointer);
 	
+	Pointer equal(Pointer);
 	Pointer truth();
 	Pointer repr();
 };
@@ -176,6 +178,9 @@ namespace std {
 	bool equal_to<Pointer>::operator()(const Pointer& a, const Pointer& b) const {
 		return a->equal(b)->cxxbool();
 	}
+	bool less<Pointer>::operator()(const Pointer& a, const Pointer& b) const {
+		return a->less(b)->cxxbool();
+	}
 	ostream& operator<<(ostream& out,const Pointer p) {
 		return out << p->cxxstr();
 	}
@@ -183,14 +188,18 @@ namespace std {
 
 Pointer Object::hash() { return new Int((size_t)this); }
 Pointer Object::equal(Pointer p) { return this == p.x ? Bool::True : Bool::False; }
+Pointer Object::less(Pointer p) { return Bool::False; }
 Pointer Object::truth() { return Bool::True; }
 Pointer Object::repr() { return new Str("<not yet implemented>"); }
 bool Object::cxxbool() { return ((Bool*)truth().x)->x; }
 mpz_class Object::cxxint() { return ((Int*)hash().x)->x; }
 std::string Object::cxxstr() { return ((Str*)repr().x)->x; }
-
 Pointer Object::not_supported() const { throw "operation not supported"; }
 
+Pointer Nil::nil(new Nil());
+Pointer Nil::repr() { return new Str("nil"); }
+
+Pointer Bool::True(new Bool(true)), Bool::False(new Bool(false));
 Pointer Bool::truth() { return this; }
 Pointer Bool::repr() { return new Str(x ? "true" : "false"); }
 
@@ -202,26 +211,20 @@ Pointer Int::add(Pointer p) {
 		return not_supported();
 	}
 }
+Pointer Int::equal(Pointer p) {
+	switch(p->type) {
+	case INT_TYPE:
+		return x == ((Int*)p.x)->x ? Bool::True : Bool::False;
+	case FLOAT_TYPE:
+		return x.get_d() == ((Float*)p.x)->x ? Bool::True : Bool::False;
+	default:
+		return Bool::False;
+	}
+}
 Pointer Int::truth() { return x ? Bool::True : Bool::False; }
 Pointer Int::repr() { return new Str(x.get_str()); }
 
 Pointer Float::repr() { return new Str(std::to_string(x)); }
-
-
-
-
-
-// ------------------------------------------------------------------------------------------------
-// ------------------------------------------------------------------------------------------------
-// ------------------------------------------------------------------------------------------------
-// ------------------------------------------------------------------------------------------------
-// ------------------------------------------------------------------------------------------------
-// static member declarations
-
-Pointer Nil::nil(new Nil());
-Pointer Nil::repr() { return new Str("nil"); }
-
-Pointer Bool::True(new Bool(true)), Bool::False(new Bool(false));
 
 
 // ------------------------------------------------------------------------------------------------
