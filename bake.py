@@ -112,8 +112,22 @@ class Parser(object):
 		t[0] = ExpressionStatement(t[1])
 	
 	def p_statement_declaration(self,t):
-		'statement : VAR NAME EQ expression NEWLINE'
-		t[0] = [t[2],t[4]]
+		'statement : VAR declaration_pair_list NEWLINE'
+		print(t[2])
+		t[0] = DeclarationStatement(t[2])
+	
+	def p_declaration_pair_list_base(self,t):
+		'declaration_pair_list : declaration_pair'
+		t[0] = [t[1]]
+	
+	def p_declaration_pair_list_inductive_step(self,t):
+		'declaration_pair_list : declaration_pair_list COMMA declaration_pair'
+		t[0] = t[1]
+		t[0].append(t[3])
+	
+	def p_declaration_pair(self,t):
+		'declaration_pair : name EQ expression'
+		t[0] = [t[1],t[3]]
 	
 	def p_if(self,t):
 		'if_statement : IF expression block_statement'
@@ -144,9 +158,13 @@ class Parser(object):
 		'expression : STRING'
 		t[0] = StringExpression(t[1])
 	
-	def p_expression_name(self,t):
-		'expression : NAME'
+	def p_name(self,t):
+		'name : NAME'
 		t[0] = NameExpression(t[1])
+	
+	def p_expression_name(self,t):
+		'expression : name'
+		t[0] = t[1]
 	
 	def p_expression_list(self,t):
 		'expression : LBKT expression_list RBKT'
@@ -209,6 +227,13 @@ class Statement(object):
 	
 	def indentation(self,depth):
 		return self._indentation * depth
+
+class DeclarationStatement(Statement):
+	def __init__(self,pairs):
+		self.pairs = pairs
+	
+	def __str__(self,depth=0):
+		return (self.indentation(depth) + 'Pointer ' + ', '.join('%s = %s' % (name,expression) for name, expression in self.pairs) + ';\n')
 
 class BlockStatement(Statement):
 	def __init__(self,statements):
