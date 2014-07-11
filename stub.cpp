@@ -211,6 +211,8 @@ Pointer Int::add(Pointer p) {
 	switch(p->type) {
 	case INT_TYPE:
 		return new Int(x + ((Int*)p.x)->x);
+	case FLOAT_TYPE:
+		return new Float(x.get_d() + ((Float*)p.x)->x);
 	default:
 		return not_supported();
 	}
