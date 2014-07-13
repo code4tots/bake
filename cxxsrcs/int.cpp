@@ -6,6 +6,8 @@ Pointer Int::add(Pointer p) {
 	switch(p->type) {
 	case INT_TYPE:
 		return new Int(x + p->cxxint());
+	case FLOAT_TYPE:
+		return new Float(x.get_d() + p->cxxfloat());
 	default:
 		return not_supported();
 	}
@@ -14,6 +16,8 @@ Pointer Int::subtract(Pointer p) {
 	switch(p->type) {
 	case INT_TYPE:
 		return new Int(x - p->cxxint());
+	case FLOAT_TYPE:
+		return new Float(x.get_d() - p->cxxfloat());
 	default:
 		return not_supported();
 	}
@@ -22,6 +26,8 @@ Pointer Int::multiply(Pointer p) {
 	switch(p->type) {
 	case INT_TYPE:
 		return new Int(x * p->cxxint());
+	case FLOAT_TYPE:
+		return new Float(x.get_d() * p->cxxfloat());
 	default:
 		return not_supported();
 	}
@@ -30,6 +36,8 @@ Pointer Int::divide(Pointer p) {
 	switch(p->type) {
 	case INT_TYPE:
 		return new Int(x / p->cxxint());
+	case FLOAT_TYPE:
+		return new Float(x.get_d() / p->cxxfloat());
 	default:
 		return not_supported();
 	}
@@ -50,6 +58,8 @@ Pointer Int::equal(Pointer p) {
 	switch(p->type) {
 	case INT_TYPE:
 		return new Bool(x == p->cxxint());
+	case FLOAT_TYPE:
+		return new Bool(x.get_d() == p->cxxfloat());
 	default:
 		return new Bool(false);
 	}
@@ -59,6 +69,8 @@ Pointer Int::less(Pointer p) {
 	switch(p->type) {
 	case INT_TYPE:
 		return new Bool(x < p->cxxint());
+	case FLOAT_TYPE:
+		return new Bool(x.get_d() < p->cxxfloat());
 	default:
 		return new Bool(false);
 	}

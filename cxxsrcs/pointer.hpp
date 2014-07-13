@@ -53,3 +53,10 @@ namespace std {
 		bool operator()(const Pointer&, const Pointer&) const;
 	};
 }
+
+
+struct NotSupported {};
+
+static Pointer not_supported() {
+	throw NotSupported();
+}

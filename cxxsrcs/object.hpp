@@ -35,9 +35,9 @@ struct Object {
 	// Dangerous. Use with caution.
 	bool cxxbool();
 	mpz_class& cxxint();
+	double cxxfloat();
 	std::string& cxxstr();
 	
 protected:
 	Object(Type);
-	Pointer not_supported();
 };

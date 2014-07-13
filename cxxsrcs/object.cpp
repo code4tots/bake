@@ -31,10 +31,9 @@ Pointer Object::greater_equal(Pointer p) { return greater(p)->logical_or(equal(p
 // C++ interface
 bool Object::cxxbool() { return ((Bool*)this)->x; }
 mpz_class& Object::cxxint() { return ((Int*)this)->x; }
+double Object::cxxfloat() { return ((Float*)this)->x; }
 std::string& Object::cxxstr() { return ((Str*)this)->x; }
 
 // protected
 Object::Object(Type t) : type(t) {}
 
-struct NotSupported {};
-Pointer Object::not_supported() { throw NotSupported(); }
