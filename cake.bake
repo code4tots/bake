@@ -1,13 +1,5 @@
-var f = \ x y {
-	print("first value is  ", x)
-	print("second value is ", y)
-}
-
-f("this is the first value!", 37826434234)
-
-var x = 12
-
-while (x) {
+var x = 0
+while (x < 10) {
 	print(x)
-	x = x-1
+	x = x + 1
 }

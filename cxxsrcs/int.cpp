@@ -46,4 +46,26 @@ Pointer Int::modulo(Pointer p) {
 // string representation
 Pointer Int::repr() { return new Str(x.get_str()); }
 
+Pointer Int::equal(Pointer p) {
+	switch(p->type) {
+	case INT_TYPE:
+		return new Bool(x == p->cxxint());
+	default:
+		return new Bool(false);
+	}
+}
+
+Pointer Int::less(Pointer p) {
+	switch(p->type) {
+	case INT_TYPE:
+		return new Bool(x < p->cxxint());
+	default:
+		return new Bool(false);
+	}
+}
+
+Pointer Int::hash() {
+	return new Int(x.get_ui());
+}
+
 Pointer Int::truth() { return new Bool(x != 0); }

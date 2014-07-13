@@ -300,10 +300,10 @@ def parse_function_arguments(token_stream):
 parse_expression = (
 	binary_expression_parser(alternation_parser(token_parser('=')),
 		binary_expression_parser(alternation_parser(*list(map(token_parser,('or','and')))),
-			binary_expression_parser(alternation_parser(token_parser('==')),
+			binary_expression_parser(alternation_parser(*list(map(token_parser,('==','<','>','<=','>=')))),
 				binary_expression_parser(alternation_parser(*list(map(token_parser,('+','-')))),
-					binary_expression_parser(alternation_parser(token_parser('*'),token_parser('/')),
-						prefix_expression_parser(alternation_parser(token_parser('+'),token_parser('-')),
+					binary_expression_parser(alternation_parser(*list(map(token_parser,('*','/')))),
+						prefix_expression_parser(alternation_parser(*list(map(token_parser,('+','-')))),
 							postfix_expression_parser(parse_function_arguments,
 								parse_primary_expression))))))))
 

@@ -13,5 +13,9 @@ struct Int : Object {
 	// string representation
 	Pointer repr();
 	
+	Pointer equal(Pointer);
+	Pointer less(Pointer);
+	Pointer hash();
+	
 	Pointer truth();
 };

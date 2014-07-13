@@ -23,6 +23,11 @@ Pointer Object::truth() { return new Bool(true); }
 Pointer Object::logical_or(Pointer p) { return truth()->cxxbool() ? this : p; }
 Pointer Object::logical_and(Pointer p) { return truth()->cxxbool() ? p : this; }
 
+// convenience comparison methods
+Pointer Object::greater(Pointer p) { return p->less(this); }
+Pointer Object::less_equal(Pointer p) { return less(p)->logical_or(equal(p)); }
+Pointer Object::greater_equal(Pointer p) { return greater(p)->logical_or(equal(p)); }
+
 // C++ interface
 bool Object::cxxbool() { return ((Bool*)this)->x; }
 mpz_class& Object::cxxint() { return ((Int*)this)->x; }

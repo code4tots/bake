@@ -26,6 +26,11 @@ struct Object {
 	Pointer logical_or(Pointer);
 	Pointer logical_and(Pointer);
 	
+	// convenience comparison methods
+	Pointer greater(Pointer);
+	Pointer less_equal(Pointer);
+	Pointer greater_equal(Pointer);
+	
 	// C++ interface
 	// Dangerous. Use with caution.
 	bool cxxbool();
