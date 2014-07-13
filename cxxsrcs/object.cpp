@@ -14,6 +14,7 @@ Pointer Object::repr() { return new Str("<not yet implemented>"); }
 
 // comparison and hashing
 Pointer Object::equal(Pointer p) { return new Bool(this == p.x); }
+Pointer Object::less(Pointer p) { return new Bool(false); }
 Pointer Object::hash() { return new Int((size_t)(this)); }
 
 Pointer Object::truth() { return new Bool(true); }

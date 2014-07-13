@@ -1,4 +1,4 @@
-.PHONY: clean all run
+.PHONY: clean all run stub.cpp
 
 run: all
 	./a.out

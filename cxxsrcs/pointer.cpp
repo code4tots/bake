@@ -13,4 +13,8 @@ namespace std {
 	bool equal_to<Pointer>::operator()(const Pointer& a, const Pointer& b) const {
 		return a->equal(b)->cxxbool();
 	}
+	
+	bool less<Pointer>::operator()(const Pointer& a, const Pointer& b) const {
+		return a->less(b)->cxxbool();
+	}
 }

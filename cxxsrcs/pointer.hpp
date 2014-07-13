@@ -48,4 +48,8 @@ namespace std {
 	template <> struct equal_to<Pointer> {
 		bool operator()(const Pointer&, const Pointer&) const;
 	};
+	
+	template <> struct less<Pointer> {
+		bool operator()(const Pointer&, const Pointer&) const;
+	};
 }

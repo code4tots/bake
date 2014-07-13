@@ -17,6 +17,7 @@ struct Object {
 	
 	// comparison and hashing
 	virtual Pointer equal(Pointer);
+	virtual Pointer less(Pointer);
 	virtual Pointer hash();
 	
 	virtual Pointer truth();
