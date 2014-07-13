@@ -13,3 +13,8 @@ Pointer Dict::repr() {
 	s += "}";
 	return new Str(s);
 }
+
+Pointer Dict::truth() {
+	std::cout << x.size() << std::endl;
+	return new Bool(x.size() != 0);
+}

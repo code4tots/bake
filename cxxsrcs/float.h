@@ -4,4 +4,6 @@ struct Float : Object {
 	
 	// string representation
 	Pointer repr();
+	
+	Pointer truth();
 };

@@ -4,4 +4,6 @@ struct List : Object {
 	
 	// string representation
 	Pointer repr();
+	
+	Pointer truth();
 };

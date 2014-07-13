@@ -1,6 +1,5 @@
 import re
 
-keywords = ('var', 'if', 'else')
 
 binary_operators = {
 	'+' : 'add',
@@ -14,10 +13,15 @@ binary_operators = {
 	'>' : 'greater',
 	'<=' : 'greater_equal',
 	'>=' : 'less_equal',
+	
+	'and' : 'logical_and',
+	'or' : 'logical_or'
 }
 
+keywords = ('var', 'if', 'else') + tuple(k for k in binary_operators.keys() if k.isalpha())
+
 symbols = tuple(set(
-	tuple(binary_operators.keys()) + (
+	tuple(k for k in binary_operators.keys() if not k.isalpha()) + (
 	# grouping/delimier
 	'(', ')', '{', '}', '[', ']',
 	',', ':', '\\',
@@ -220,10 +224,12 @@ def parse_comma_separated_pairs(token_stream):
 	pairs = []
 	while True:
 		pair = parse_expression_pair(token_stream)
-		if not pair or token_stream.peek() != ',':
+		if not pair:
+			return pairs
+		pairs.append(pair)
+		if token_stream.peek() != ',':
 			return pairs
 		next(token_stream) # consume ','
-		pairs.append(pair)
 
 def binary_expression_parser(parse_operator,parse_higher_priority_expression):
 	@backtrack
@@ -291,12 +297,13 @@ def parse_function_arguments(token_stream):
 
 parse_expression = (
 	binary_expression_parser(alternation_parser(token_parser('=')),
-		binary_expression_parser(alternation_parser(token_parser('==')),
-			binary_expression_parser(alternation_parser(token_parser('+'),token_parser('-')),
-				binary_expression_parser(alternation_parser(token_parser('*'),token_parser('/')),
-					prefix_expression_parser(alternation_parser(token_parser('+'),token_parser('-')),
-						postfix_expression_parser(parse_function_arguments,
-							parse_primary_expression)))))))
+		binary_expression_parser(alternation_parser(*list(map(token_parser,('or','and')))),
+			binary_expression_parser(alternation_parser(token_parser('==')),
+				binary_expression_parser(alternation_parser(*list(map(token_parser,('+','-')))),
+					binary_expression_parser(alternation_parser(token_parser('*'),token_parser('/')),
+						prefix_expression_parser(alternation_parser(token_parser('+'),token_parser('-')),
+							postfix_expression_parser(parse_function_arguments,
+								parse_primary_expression))))))))
 
 @backtrack
 def parse_empty_statement(token_stream):
@@ -344,7 +351,7 @@ def parse_if_statement(token_stream):
 		if condition:
 			if_block = parse_block_statement(token_stream)
 			if if_block:
-				statement = 'if('+condition+')'+if_block
+				statement = 'if('+condition+'->truth()->cxxbool())'+if_block
 				if token_stream.peek() == 'else':
 					next(token_stream)
 					else_block = parse_block_statement(token_stream)

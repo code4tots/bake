@@ -19,6 +19,12 @@ struct Object {
 	virtual Pointer equal(Pointer);
 	virtual Pointer hash();
 	
+	virtual Pointer truth();
+	
+	// logical operators
+	Pointer logical_or(Pointer);
+	Pointer logical_and(Pointer);
+	
 	// C++ interface
 	// Dangerous. Use with caution.
 	bool cxxbool();

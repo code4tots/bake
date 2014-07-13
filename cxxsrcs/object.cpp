@@ -16,6 +16,12 @@ Pointer Object::repr() { return new Str("<not yet implemented>"); }
 Pointer Object::equal(Pointer p) { return new Bool(this == p.x); }
 Pointer Object::hash() { return new Int((size_t)(this)); }
 
+Pointer Object::truth() { return new Bool(true); }
+
+// logical operators
+Pointer Object::logical_or(Pointer p) { return truth()->cxxbool() ? this : p; }
+Pointer Object::logical_and(Pointer p) { return truth()->cxxbool() ? p : this; }
+
 // C++ interface
 bool Object::cxxbool() { return ((Bool*)this)->x; }
 mpz_class& Object::cxxint() { return ((Int*)this)->x; }
@@ -23,4 +29,6 @@ std::string& Object::cxxstr() { return ((Str*)this)->x; }
 
 // protected
 Object::Object(Type t) : type(t) {}
-Pointer Object::not_supported() { throw "not supported"; return not_supported(); }
+
+struct NotSupported {};
+Pointer Object::not_supported() { throw NotSupported(); }

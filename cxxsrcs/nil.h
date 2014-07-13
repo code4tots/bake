@@ -3,4 +3,6 @@ struct Nil : Object {
 	
 	// string representation
 	Pointer repr();
+	
+	Pointer truth();
 };

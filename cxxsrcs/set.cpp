@@ -12,3 +12,7 @@ Pointer Set::repr() {
 	s += "}";
 	return new Str(s);
 }
+
+Pointer Set::truth() {
+	return new Bool(x.size() != 0);
+}

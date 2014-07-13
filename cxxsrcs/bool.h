@@ -4,4 +4,7 @@ struct Bool : Object {
 	
 	// string representation
 	Pointer repr();
+	
+	
+	Pointer truth();
 };

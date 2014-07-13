@@ -12,3 +12,7 @@ Pointer List::repr() {
 	s += "]";
 	return new Str(s);
 }
+
+Pointer List::truth() {
+	return new Bool(x.size() != 0);
+}

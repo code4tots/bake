@@ -4,4 +4,6 @@ struct Int : Object {
 	
 	// string representation
 	Pointer repr();
+	
+	Pointer truth();
 };

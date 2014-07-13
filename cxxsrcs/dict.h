@@ -4,4 +4,7 @@ struct Dict : Object {
 	
 	// string representation
 	Pointer repr();
+	
+	
+	Pointer truth();
 };
