@@ -3,7 +3,9 @@ SRC=$(HDR:.h=.cpp)
 
 .PHONY: all clean
 
-all: $(HDR) $(SRC)
+all: stub.cpp
+
+stub.cpp: $(HDR) $(SRC)
 	cat $(HDR) $(SRC) > stub.cpp
 
 clean:
