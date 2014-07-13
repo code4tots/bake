@@ -363,6 +363,15 @@ def parse_if_statement(token_stream):
 						return
 				return statement
 
+@backtrack
+def parse_while_statement(token_stream):
+	if next(token_stream) == 'while':
+		condition = parse_expression(token_stream)
+		if condition:
+			block = parse_block_statement(token_stream)
+			if block:
+				return 'while('+condition+'->truth()->cxxbool())'+block
+
 # no backtrack -- may return falsey value even on success
 def parse_statements(token_stream):
 	statements = []
@@ -383,7 +392,7 @@ def parse_block_statement(token_stream):
 def parse_statement(token_stream):
 	# any(parser(token_stream) for parser in (...))
 	# does not work because it returns a bool instead of the first true value
-	for parser in (parse_empty_statement,parse_expression_statement,parse_block_statement,parse_declaration_statement,parse_if_statement):
+	for parser in (parse_empty_statement,parse_expression_statement,parse_block_statement,parse_declaration_statement,parse_if_statement,parse_while_statement):
 		result = parser(token_stream)
 		if result:
 			return result

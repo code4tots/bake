@@ -4,4 +4,10 @@ var f = \ x y {
 }
 
 f("this is the first value!", 37826434234)
-print(18446744073709551615)
+
+var x = 12
+
+while (x) {
+	print(x)
+	x = x-1
+}
