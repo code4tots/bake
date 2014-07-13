@@ -1,16 +1,23 @@
-.PHONY: clean all run
+.PHONY: clean all run stub.cpp
 
 run: all
 	./a.out
 	
 clean:
-	rm -rf a.out cake.cpp __pycache__ parser.out parsetab.py
+	rm -rf a.out cake.cpp __pycache__ stub.cpp
+	cd cxxsrcs && $(MAKE) clean
 
 all: a.out
 
-cake.cpp: cake.bake stub.cpp bake.py
+cake.cpp: stub.cpp cream.cpp
+	cat stub.cpp cream.cpp > cake.cpp
+
+cream.cpp: cake.bake bake.py
 	python3 bake.py
 
 a.out: cake.cpp
 	g++ cake.cpp -I/usr/local/include/ --std=c++11 -lgmpxx -lgmp -L/usr/local/lib -Wall -Wfatal-errors -Wpedantic
 
+stub.cpp:
+	cd cxxsrcs && $(MAKE)
+	cp cxxsrcs/stub.cpp stub.cpp

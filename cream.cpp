@@ -1,0 +1,1 @@
+Pointer x=(new List({(Pointer(new Int(1))),(Pointer(new Int(2))),(Pointer(new Int(3)))}));(x_xprint({x_xx->add((new List({(Pointer(new Int(3))),(Pointer(new Int(4)))})))}));;

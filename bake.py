@@ -1,369 +1,378 @@
 import re
-from ply import lex, yacc
 
-class Lexer(object):
-	keywords = ('var', 'if', 'else')
-	
-	symbols = {
-		',' : 'COMMA',
-		'(' : 'LPAR',
-		')' : 'RPAR',
-		'[' : 'LBKT',
-		']' : 'RBKT',
-		'{' : 'LBCE',
-		'}' : 'RBCE',
-		'=' : 'EQ',
-		'+' : 'PLUS',
-		'-' : 'MINUS',
-		'*' : 'STAR',
-		'/' : 'SLASH',
-		
-		'==' : 'EQU',
-		'!=' : 'NEQ'
-	}
-	
-	tokens = (('NAME','INT','FLOAT','STRING','NEWLINE')+
-		tuple(k.upper() for k in keywords) +
-		tuple(symbols.values()))
-	
-	t_ignore = ' \t'
-	
-	def t_NEWLINE(self,t):
-		r'\n+'
-		t.lexer.lineno += len(t.value)
-		return t
-	
-	def t_COMMENT(self,t):
-		r'\#[^\n]*'
-	
-	def t_NUMBER(self,t):
-		r'\d+(?:\.\d*)?'
-		t.type = 'FLOAT' if '.' in t.value else 'INT'
-		return t
-	
-	def t_NAME(self,t):
-		r'(?!r\"|r\'|\d)\w+'
-		if t.value in self.keywords:
-			t.type = t.value.upper()
-		return t
-	
-	t_STRING = '|'.join('(?:'+s+')' for s in (
-		r'\"(?:[^"]|(?:\\\"))*\"',
-		r"\'(?:[^']|(?:\\\'))*\'",
-		r'r\"[^"]*\"',
-		r"r\'[^']*\'"))
-	
-	def __init__(self, **kwargs):
-		self.lexer = lex.lex(module=self, **kwargs)
-	
-	def token(self):
-		return self.lexer.token()
-	
-	def input(self,data):
-		return self.lexer.input(data)
-	
-	def test(self,data):
-		self.lexer.input(data)
-		while True:
-			tok = self.lexer.token()
-			if not tok: break
-			print(tok)
+keywords = ('var', 'if', 'else')
 
-for t, n in Lexer.symbols.items():
-	setattr(Lexer,'t_'+n,re.escape(t))
+binary_operators = {
+	'+' : 'add',
+	'-' : 'subtract',
+	'*' : 'multiply',
+	'/' : 'divide',
+	'%' : 'modulo',
+	
+	'==' : 'equal',
+	'<' : 'less',
+	'>' : 'greater',
+	'<=' : 'greater_equal',
+	'>=' : 'less_equal',
+}
 
-class Parser(object):
-	lexer = Lexer()
-	tokens = Lexer.tokens
+symbols = tuple(set(
+	tuple(binary_operators.keys()) + (
+	# grouping/delimier
+	'(', ')', '{', '}', '[', ']',
+	',', '\\',
 	
-	precedence = (
-		('left', 'EQU', 'NEQ'),
-		('left', 'PLUS', 'MINUS'),
-		('left', 'STAR', 'SLASH'),
-		('right', 'UMINUS'),
-		('right', 'LPAR')
-	)
-	
-	start = 'all'
-	
-	def p_all(self,t):
-		'all : statements'
-		t[0] = 'void bake() {\n' + ''.join(s.__str__(1) for s in t[1]) + '}\n'
-	
-	def p_statements_base(self,t):
-		'statements : statement'
-		t[0] = [t[1]]
-	
-	def p_statements_inductive_step(self,t):
-		'statements : statements statement'
-		t[0] = t[1]
-		t[0].append(t[2])
-	
-	def p_block(self,t):
-		'block_statement : LBCE statements RBCE'
-		t[0] = BlockStatement(t[2])
-	
-	def p_statement_block(self,t):
-		'statement : block_statement'
-		t[0] = t[1]
-	
-	def p_statement_expression(self,t):
-		'statement : expression NEWLINE'
-		t[0] = ExpressionStatement(t[1])
-	
-	def p_statement_declaration(self,t):
-		'statement : VAR declaration_pair_list NEWLINE'
-		print(t[2])
-		t[0] = DeclarationStatement(t[2])
-	
-	def p_declaration_pair_list_base(self,t):
-		'declaration_pair_list : declaration_pair'
-		t[0] = [t[1]]
-	
-	def p_declaration_pair_list_inductive_step(self,t):
-		'declaration_pair_list : declaration_pair_list COMMA declaration_pair'
-		t[0] = t[1]
-		t[0].append(t[3])
-	
-	def p_declaration_pair(self,t):
-		'declaration_pair : name EQ expression'
-		t[0] = [t[1],t[3]]
-	
-	def p_if(self,t):
-		'if_statement : IF expression block_statement'
-		t[0] = IfStatement(t[2],t[3])
-	
-	def p_if_else(self,t):
-		'if_else_statement : if_statement ELSE block_statement'
-		t[0] = IfElseStatement(t[1],t[3])
-	
-	def p_statement_if(self,t):
-		"""statement : if_statement
-		             | if_else_statement"""
-		t[0] = t[1]
-	
-	def p_statement_empty(self,t):
-		'statement : NEWLINE'
-		t[0] = EmptyStatement()
-	
-	def p_expression_int(self,t):
-		'expression : INT'
-		t[0] = IntExpression(t[1])
-	
-	def p_expression_float(self,t):
-		'expression : FLOAT'
-		t[0] = FloatExpression(t[1])
-	
-	def p_expression_string(self,t):
-		'expression : STRING'
-		t[0] = StringExpression(t[1])
-	
-	def p_name(self,t):
-		'name : NAME'
-		t[0] = NameExpression(t[1])
-	
-	def p_expression_name(self,t):
-		'expression : name'
-		t[0] = t[1]
-	
-	def p_expression_list(self,t):
-		'expression : LBKT expression_list RBKT'
-		t[0] = ListExpression(t[2])
-	
-	def p_expression_group(self,t):
-		'expression : LPAR expression RPAR'
-		t[0] = t[2]
-	
-	def p_expression_add(self,t):
-		'expression : expression PLUS expression'
-		t[0] = AddExpression(t[1],t[3])
-		
-	def p_expression_subtract(self,t):
-		'expression : expression MINUS expression'
-		t[0] = SubtractExpression(t[1],t[3])
-		
-	def p_expression_multiply(self,t):
-		'expression : expression STAR expression'
-		t[0] = MultiplyExpression(t[1],t[3])
-		
-	def p_expression_divide(self,t):
-		'expression : expression SLASH expression'
-		t[0] = DivideExpression(t[1],t[3])
-	
-	def p_expression_minus(self,t):
-		'expression : MINUS expression %prec UMINUS'
-		t[0] = MinusExpression(t[2])
-	
-	def p_expression_function_call(self,t):
-		'expression : expression LPAR expression_list RPAR'
-		t[0] = FunctionCallExpression(t[1],t[3])
-	
-	def p_expression_equal(self,t):
-		'expression : expression EQU expression'
-		t[0] = EqualExpression(t[1],t[3])
-	
-	def p_expression_not_equal(self,t):
-		'expression : expression NEQ expression'
-		t[0] = NotEqualExpression(t[1],t[3])
-	
-	def p_expression_list_base(self,t):
-		'expression_list : expression'
-		t[0] = [t[1]]
-	
-	def p_expression_list_inductive_step(self,t):
-		'expression_list : expression_list COMMA expression'
-		t[0] = t[1]
-		t[0].append(t[3])
-	
-	def __init__(self,**kargs):
-		self.parser = yacc.yacc(module=self, **kargs)
-	
-	def parse(self,data):
-		return self.parser.parse(data)
+	# assignment
+	'=')))
 
+token_types = {
+	'int' : r'\d+(?!\.)',
+	'float' : r'\d+\.\d*',
+	'keyword' : '|'.join(keyword+r'(?!\w)' for keyword in keywords),
+	'name' : ''.join(r'(?!'+keyword+r'(?!\w))' for keyword in keywords)+r'(?!r\"|r\'|\d)\w+',
+	'str' : '|'.join('(?:'+s+')' for s in (r'\"(?:[^"]|(?:\\\"))*\"',r"\'(?:[^']|(?:\\\'))*\'",r'r\"[^"]*\"',r"r\'[^']*\'")),
+	'symbol' : '|'.join('(?:'+re.escape(symbol)+')' for symbol in reversed(sorted(symbols))),
+	'newline' : r'(?:[ \t]*\n)+',
+}
+ignore_regex = re.compile(r'(?:(?:[ \t]+)|(?:\#[^\n]*))*')
+err_regex = re.compile(r'\S+')
 
-class Statement(object):
-	_indentation = '\t'
+# '()' and '[]' indicate expressions, and as such, inside such parentheses, newlines are insignificant.
+parentheses = {
+	'(' : ')',
+	'[' : ']',
 	
-	def indentation(self,depth):
-		return self._indentation * depth
+	# Note that '{' and '}' braces are treated as a special case by the lexer.
+	# If the inner most brace during the lex is '{}', then newlines are significant.
+	# This is because '{}' determine code blocks, and in code blocks, we have statements
+	# for which whitespace is significant.
+	'{' : '}'
+}
 
-class DeclarationStatement(Statement):
-	def __init__(self,pairs):
-		self.pairs = pairs
-	
-	def __str__(self,depth=0):
-		return (self.indentation(depth) + 'Pointer ' + ', '.join('%s = %s' % (name,expression) for name, expression in self.pairs) + ';\n')
-
-class BlockStatement(Statement):
-	def __init__(self,statements):
-		self.statements = statements
-	
-	def __str__(self,depth=0):
-		return (
-			self.indentation(depth) + '{\n' +
-			''.join(s.__str__(depth+1) for s in self.statements) +
-			self.indentation(depth) + '}\n')
-
-class IfStatement(Statement):
-	def __init__(self,condition,if_block):
-		self.condition = condition
-		self.if_block = if_block
-	
-	def __str__(self,depth=0):
-		return (
-			self.indentation(depth) + 'if (' + str(self.condition) + '->cxxbool())\n' +
-			self.if_block.__str__(depth))
-	
-class IfElseStatement(Statement):
-	def __init__(self,if_statement,else_block):
-		self.if_statement = if_statement
-		self.else_block = else_block
-	
-	def __str__(self,depth=0):
-		return (
-			self.if_statement.__str__(depth) +
-			self.indentation(depth) + 'else\n' +
-			self.else_block.__str__(depth))
-
-class ExpressionStatement(Statement):
-	def __init__(self,expression):
-		self.expression = expression
-	
-	def __str__(self,depth=0):
-		return self.indentation(depth) + str(self.expression) + ';\n'
-
-class EmptyStatement(Statement):
-	def __str__(self,depth=0):
-		return ''
-
-class Expression(object):
+class ParseException(Exception):
 	pass
 
-class IntExpression(Expression):
-	def __init__(self,integer):
-		self.integer = integer
+for token_type in token_types:
+	token_types[token_type] = re.compile(token_types[token_type])
+
+parentheses_inverse = { v : k for k, v in parentheses.items() }
+
+class Token(str):
+	def __new__(cls,type_,whole_string,token_string,start,end):
+		self = super(Token,cls).__new__(cls,token_string)
+		self.type_ = type_
+		self.whole_string = whole_string
+		self.token_string = token_string
+		self.start = start
+		self.end = end
+		
+		self.line_number = 1+whole_string.count('\n',0,start)
+		
+		a = whole_string.rfind('\n',0,start) + 1
+		b = whole_string.find('\n',start)
+		if b == -1:
+			b = len(whole_string)
+		self.line = whole_string[a:b]
+		
+		return self
 	
-	def __str__(self):
-		return '(new Int('+self.integer+'))'
+	def __repr__(self):
+		return repr((self.type_,self.token_string,self.start,self.end))
 
-class FloatExpression(Expression):
-	def __init__(self,floating):
-		self.floating = floating
+def lex(string):
+	parenthesis_depth = {parenthesis : 0 for parenthesis in parentheses}
 	
-	def __str__(self):
-		return '(new Float('+self.floating+'))'
-
-class StringExpression(Expression):
-	def __init__(self,string):
-		self.string = string
+	parenthesis_stack = []
 	
-	def to_c_string(self,string):
-		return '"'+''.join('\\'+hex(ord(c))[1:] for c in string)+'"'
+	i = ignore_regex.match(string).end() # skip ignorables
+	while i < len(string):
+		for token_type, regex in token_types.items():
+			m = regex.match(string,i)
+			if m:
+				i = m.end()
+				if token_type != 'newline' or not parenthesis_stack or parenthesis_stack[-1] == '{':
+					token = Token(token_type,string,m.group(),m.start(),m.end())
+					if token in parentheses:
+						parenthesis_stack.append(token)
+					
+					if token in parentheses_inverse:
+						if [parentheses_inverse[token]] == parenthesis_stack[-1:]:
+							parenthesis_stack.pop()
+						else:
+							raise ParseException('mismatched parenthesis')
+					
+					yield token
+				break
+		else:
+			raise ParseException('unrecognized token: ' + err_regex.match(string,i).group())
+		i = ignore_regex.match(string,i).end() # skip ignorables
 	
-	def __str__(self):
-		return '(new Str('+self.to_c_string(eval(self.string))+'))'
+	yield Token('newline',string,'\n',len(string),len(string))
+	yield Token('eof',string,'',len(string),len(string))
 
-class NameExpression(Expression):
-	def __init__(self,name):
-		self.name = name
+class TokenStream(object):
+	def __init__(self,token_generator):
+		self.token_list = list(token_generator)
+		self.position = 0
 	
-	def __str__(self):
-		return 'ingredient_x' + self.name
-
-class ListExpression(Expression):
-	def __init__(self,expressions):
-		self.expressions = expressions
+	def __next__(self):
+		self.position += 1
+		return self.token_list[self.position-1]
 	
-	def __str__(self):
-		return '(new List({'+','.join(map(str,self.expressions))+'}))'
-
-class FunctionCallExpression(Expression):
-	def __init__(self,expression,arguments):
-		self.expression = expression
-		self.arguments = arguments
+	def next(self):
+		return self.__next__()
 	
-	def __str__(self):
-		return '%s->call({%s})'%(self.expression,','.join(map(str,self.arguments)))
-
-class MethodExpression(Expression):
-	def __init__(self,expression,argument=''):
-		self.expression = expression
-		self.argument = argument
+	def peek(self):
+		return self.token_list[self.position]
 	
-	def __str__(self):
-		return '%s->%s(%s)'%(self.expression,self.method_name,self.argument)
+	def seek(self,position):
+		self.position = position
+	
+	def tell(self):
+		return self.position
 
-class AddExpression(MethodExpression):
-	method_name = 'add'
+def backtrack(parser):
+	def backtracking_parser(token_stream):
+		save = token_stream.tell()
+		result = parser(token_stream)
+		if not result:
+			token_stream.seek(save)
+		return result
+	return backtracking_parser
 
-class SubtractExpression(MethodExpression):
-	method_name = 'subtract'
 
-class MinusExpression(MethodExpression):
-	method_name = 'minus'
+def token_parser(token):
+	@backtrack
+	def parse_token(token_stream):
+		if next(token_stream) == token:
+			return token
+	return parse_token
 
-class MultiplyExpression(MethodExpression):
-	method_name = 'multiply'
+def alternation_parser(*parsers):
+	def parse_alternatives(token_stream):
+		for parser in parsers:
+			result = parser(token_stream)
+			if result:
+				return result
+	return parse_alternatives
 
-class DivideExpression(MethodExpression):
-	method_name = 'divide'
+def modify_name_expression(name):
+	return 'x_x' + name
 
-class EqualExpression(MethodExpression):
-	method_name = 'equal'
+@backtrack
+def parse_primary_expression(token_stream):
+	token = token_stream.peek()
+	type_ = token.type_
+	
+	if type_ in ('int', 'float', 'str', 'name') or token in ('(','[','\\'):
+		next(token_stream)
+		
+		if type_ == 'name':
+			return modify_name_expression(token)
+		
+		elif type_ in ('int','float','str'):
+			if type_ == 'str':
+				token = '"'+''.join('\\'+hex(ord(c))[1:] for c in eval(token))+'"'
+			return '(Pointer(new ' + type_.capitalize() + '('+ token + ')))'
+		
+		elif token == '(':
+			expression = parse_expression(token_stream)
+			if next(token_stream) == ')':
+				return expression
+		
+		elif token == '[':
+			expressions = parse_comma_separated_expressions(token_stream)
+			if next(token_stream) == ']':
+				return '(new List({'+','.join(expressions)+'}))'
+		
+		elif token == '\\':
+			arguments = []
+			while token_stream.peek().type_ == 'name':
+				arguments.append(modify_name_expression(next(token_stream)))
+			
+			body = parse_block_statement(token_stream)
+			return '(new Function([&](Args args){Pointer '+','.join(argument+'=args['+str(i)+']' for i, argument in enumerate(arguments))+';'+body+'}))'
 
-class NotEqualExpression(MethodExpression):
-	method_name = 'not_equal'
+def binary_expression_parser(parse_operator,parse_higher_priority_expression):
+	@backtrack
+	def parse_binary_expression(token_stream):
+		a = parse_higher_priority_expression(token_stream)
+		if not a:
+			return None
+		op = parse_operator(token_stream)
+		if not op:
+			return a
+		b = parse_higher_priority_expression(token_stream)
+		if not b:
+			return None
+		
+		if op not in binary_operators:
+			return '('+a+op+b+')'
+		else:
+			return a+'->'+binary_operators[op]+'('+b+')'
+	return parse_binary_expression
+
+def prefix_expression_parser(parse_operator,parse_higher_priority_expression):
+	@backtrack
+	def parse_prefix_expression(token_stream):
+		operator = parse_operator(token_stream)
+		if operator:
+			expression = parse_higher_priority_expression(token_stream)
+			if expression:
+				return '('+operator+expression+')'
+		else:
+			return parse_higher_priority_expression(token_stream)
+	return parse_prefix_expression
+		
+def postfix_expression_parser(parse_operator,parse_higher_priority_expression):
+	@backtrack
+	def parse_postfix_expression(token_stream):
+		expression = parse_higher_priority_expression(token_stream)
+		if not expression:
+			return None
+		operator = parse_operator(token_stream)
+		if not operator:
+			return expression
+		return '('+expression+operator+')'
+	return parse_postfix_expression
+
+# no backtrack -- may return falsey value even on success
+def parse_comma_separated_expressions(token_stream):
+	expressions = []
+	while True:
+		expression = parse_expression(token_stream)
+		if not expression:
+			return expressions
+		expressions.append(expression)
+		if token_stream.peek() != ',':
+			break
+		next(token_stream)
+	return expressions
+
+@backtrack
+def parse_function_arguments(token_stream):	
+	arguments = []
+	if next(token_stream) == '(':
+		arguments = parse_comma_separated_expressions(token_stream)
+		if next(token_stream) == ')':
+			return '({'+','.join(arguments)+'})'
+
+parse_expression = (
+	binary_expression_parser(alternation_parser(token_parser('=')),
+		binary_expression_parser(alternation_parser(token_parser('==')),
+			binary_expression_parser(alternation_parser(token_parser('+'),token_parser('-')),
+				binary_expression_parser(alternation_parser(token_parser('*'),token_parser('/')),
+					prefix_expression_parser(alternation_parser(token_parser('+'),token_parser('-')),
+						postfix_expression_parser(parse_function_arguments,
+							parse_primary_expression)))))))
+
+@backtrack
+def parse_empty_statement(token_stream):
+	if next(token_stream).type_ == 'newline':
+		return ';'
+
+@backtrack
+def parse_expression_statement(token_stream):
+	expression = parse_expression(token_stream)
+	if next(token_stream).type_ == 'newline':
+		return expression + ';'
+
+@backtrack
+def parse_declaration_statement(token_stream):
+	if next(token_stream) == 'var':
+		declarations = []
+		while True:
+			if token_stream.peek().type_ != 'name':
+				return
+			
+			name = next(token_stream)
+			
+			if token_stream.peek() == '=':
+				next(token_stream)
+				expression = parse_expression(token_stream)
+				if not expression:
+					return None
+				declarations.append(name + '=' + expression)
+			
+			else:
+				declarations.append(name)
+			
+			if token_stream.peek() != ',':
+				break
+			
+			next(token_stream) # consume ','
+		
+		if next(token_stream).type_ == 'newline':
+			return 'Pointer ' + ','.join(declarations) + ';'
+
+@backtrack
+def parse_if_statement(token_stream):
+	if next(token_stream) == 'if':
+		condition = parse_expression(token_stream)
+		if condition:
+			if_block = parse_block_statement(token_stream)
+			if if_block:
+				statement = 'if('+condition+')'+if_block
+				if token_stream.peek() == 'else':
+					next(token_stream)
+					else_block = parse_block_statement(token_stream)
+					if else_block:
+						statement += 'else'+else_block
+					else:
+						return
+				return statement
+
+@backtrack
+def parse_block_statement(token_stream):
+	if next(token_stream) == '{':
+		statements = []
+		while True:
+			statement = parse_statement(token_stream)
+			if not statement:
+				break
+			statements.append(statement)
+		
+		if next(token_stream) == '}':
+			return '{'+''.join(statements)+'}'
+
+@backtrack
+def parse_statement(token_stream):
+	# any(parser(token_stream) for parser in (...))
+	# does not work because it returns a bool instead of the first true value
+	for parser in (parse_empty_statement,parse_expression_statement,parse_block_statement,parse_declaration_statement,parse_if_statement):
+		result = parser(token_stream)
+		if result:
+			return result
+
+def parse(token_stream):
+	statements = []
+	while True:
+		result = parse_statement(token_stream)
+		if not result:
+			break
+		statements.append(result)
+	token = token_stream.peek()
+	
+	if token.type_ == 'eof':
+		return ''.join(statements)
+	
+	raise ParseException('invalid statement on line ' + str(token.line_number) + '\n' + token.line)
+
 
 if __name__ == '__main__':
-	with open('stub.cpp') as f:
-		stub = f.read()
-	
 	with open('cake.bake') as f:
 		code = f.read()
 	
-	code = Parser().parse(code)
+	try:		
+		cxx = parse(TokenStream(lex(code)))
 	
-	with open('cake.cpp', 'w') as f:
-		f.write(stub)
-		f.write(code)
+	except ParseException as e:
+		print(str(e))
+		exit(1)
+	
+	else:
+		with open('cream.cpp', 'w') as f:
+			f.write(cxx)
+	
+
+
