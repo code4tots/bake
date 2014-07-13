@@ -26,7 +26,9 @@ enum Type {
 struct Object;
 struct Pointer;
 
-typedef std::initializer_list<Pointer> Args;
+typedef std::pair<const Pointer,Pointer>   Pair;
+typedef std::initializer_list<Pair>        Pairs;
+typedef std::initializer_list<Pointer>     Args;
 
 struct Pointer {
 	Object * x;
@@ -38,3 +40,12 @@ struct Pointer {
 	Pointer operator[](Pointer);
 };
 
+namespace std {
+	template <> struct hash<Pointer> {
+		size_t operator()(const Pointer&) const;
+	};
+	
+	template <> struct equal_to<Pointer> {
+		bool operator()(const Pointer&, const Pointer&) const;
+	};
+}

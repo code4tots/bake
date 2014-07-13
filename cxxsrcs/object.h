@@ -11,6 +11,19 @@ struct Object {
 	virtual Pointer divide(Pointer);
 	virtual Pointer modulo(Pointer);
 	
+	// string representation
+	virtual Pointer str();
+	virtual Pointer repr();
+	
+	// comparison and hashing
+	virtual Pointer equal(Pointer);
+	virtual Pointer hash();
+	
+	// C++ interface
+	// Dangerous. Use with caution.
+	bool cxxbool();
+	mpz_class& cxxint();
+	std::string& cxxstr();
 	
 protected:
 	Object(Type);

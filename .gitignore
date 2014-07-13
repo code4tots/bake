@@ -1,6 +1,7 @@
 *.out
 *.pyc
-parsetab.py
 cake.cpp
+stub.cpp
+cxxsrcs/stub.cpp
 *~
 \#*#

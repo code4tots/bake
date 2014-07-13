@@ -20,7 +20,7 @@ symbols = tuple(set(
 	tuple(binary_operators.keys()) + (
 	# grouping/delimier
 	'(', ')', '{', '}', '[', ']',
-	',', '\\',
+	',', ':', '\\',
 	
 	# assignment
 	'=')))
@@ -164,7 +164,7 @@ def parse_primary_expression(token_stream):
 	token = token_stream.peek()
 	type_ = token.type_
 	
-	if type_ in ('int', 'float', 'str', 'name') or token in ('(','[','\\'):
+	if type_ in ('int', 'float', 'str', 'name') or token in ('(','[','{','\\'):
 		next(token_stream)
 		
 		if type_ == 'name':
@@ -185,13 +185,45 @@ def parse_primary_expression(token_stream):
 			if next(token_stream) == ']':
 				return '(new List({'+','.join(expressions)+'}))'
 		
+		elif token == '{':
+			j = token_stream.tell()
+			
+			expressions = parse_comma_separated_expressions(token_stream)
+			if next(token_stream) == '}':
+				return '(new Set({'+','.join(expressions)+'}))'
+			else:
+				token_stream.seek(j)
+				pairs = parse_comma_separated_pairs(token_stream)
+				if next(token_stream) == '}':
+					return '(new Dict({'+','.join(pairs)+'}))'
+		
 		elif token == '\\':
 			arguments = []
 			while token_stream.peek().type_ == 'name':
 				arguments.append(modify_name_expression(next(token_stream)))
 			
 			body = parse_block_statement(token_stream)
-			return '(new Function([&](Args args){Pointer '+','.join(argument+'=args['+str(i)+']' for i, argument in enumerate(arguments))+';'+body+'}))'
+			return '(new Func([&](Args args){Pointer '+','.join(argument+'=args['+str(i)+']' for i, argument in enumerate(arguments))+';'+body+'}))'
+
+@backtrack
+def parse_expression_pair(token_stream):
+	key = parse_expression(token_stream)
+	if not key:
+		return
+	if next(token_stream) != ':':
+		return
+	value = parse_expression(token_stream)
+	return '{'+key+','+value+'}'
+
+# no backtrack as even success may yield a falsey value
+def parse_comma_separated_pairs(token_stream):
+	pairs = []
+	while True:
+		pair = parse_expression_pair(token_stream)
+		if not pair or token_stream.peek() != ',':
+			return pairs
+		next(token_stream) # consume ','
+		pairs.append(pair)
 
 def binary_expression_parser(parse_operator,parse_higher_priority_expression):
 	@backtrack
@@ -285,7 +317,7 @@ def parse_declaration_statement(token_stream):
 			if token_stream.peek().type_ != 'name':
 				return
 			
-			name = next(token_stream)
+			name = modify_name_expression(next(token_stream))
 			
 			if token_stream.peek() == '=':
 				next(token_stream)
@@ -322,16 +354,19 @@ def parse_if_statement(token_stream):
 						return
 				return statement
 
+# no backtrack -- may return falsey value even on success
+def parse_statements(token_stream):
+	statements = []
+	while True:
+		statement = parse_statement(token_stream)
+		if not statement:
+			return [statement for statement in statements if statement != ';']
+		statements.append(statement)
+
 @backtrack
 def parse_block_statement(token_stream):
 	if next(token_stream) == '{':
-		statements = []
-		while True:
-			statement = parse_statement(token_stream)
-			if not statement:
-				break
-			statements.append(statement)
-		
+		statements = parse_statements(token_stream)
 		if next(token_stream) == '}':
 			return '{'+''.join(statements)+'}'
 
@@ -345,17 +380,10 @@ def parse_statement(token_stream):
 			return result
 
 def parse(token_stream):
-	statements = []
-	while True:
-		result = parse_statement(token_stream)
-		if not result:
-			break
-		statements.append(result)
+	statements = parse_statements(token_stream)
 	token = token_stream.peek()
-	
 	if token.type_ == 'eof':
 		return ''.join(statements)
-	
 	raise ParseException('invalid statement on line ' + str(token.line_number) + '\n' + token.line)
 
 
@@ -372,7 +400,9 @@ if __name__ == '__main__':
 	
 	else:
 		with open('cream.cpp', 'w') as f:
+			f.write('int main() {')
 			f.write(cxx)
-	
+			f.write('}\n')
+
 
 
