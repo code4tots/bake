@@ -1,8 +1,8 @@
+cream.cpp
 *.out
 *.pyc
 cake.cpp
 stub.cpp
-cream.cpp
 cxxsrcs/stub.cpp
 *~
 \#*#

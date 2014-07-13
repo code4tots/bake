@@ -177,6 +177,8 @@ def parse_primary_expression(token_stream):
 		elif type_ in ('int','float','str'):
 			if type_ == 'str':
 				token = '"'+''.join('\\'+hex(ord(c))[1:] for c in eval(token))+'"'
+			elif type_ == 'int' and int(token) >= 2 ** 31:
+				token = '"'+token+'"'
 			return '(Pointer(new ' + type_.capitalize() + '('+ token + ')))'
 		
 		elif token == '(':
@@ -207,7 +209,7 @@ def parse_primary_expression(token_stream):
 				arguments.append(modify_name_expression(next(token_stream)))
 			
 			body = parse_block_statement(token_stream)
-			return '(new Func([&](Args args){Pointer '+','.join(argument+'=args['+str(i)+']' for i, argument in enumerate(arguments))+';'+body+'}))'
+			return '(new Func([&](Args args) -> Pointer {auto i = args.begin(); Pointer '+','.join(argument+'=*i++' for argument in arguments)+';'+body+'return x_xnil; }))'
 
 @backtrack
 def parse_expression_pair(token_stream):

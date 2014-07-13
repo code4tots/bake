@@ -1,17 +1,7 @@
-var x = [1,2,3], y = {1,2,3}
-var z = {1:2,3:4,5:6}
-print(y)
-print(nil)
-print(true,false)
-print(3)
-print(3.3)
-print(x)
-print(z)
-
-print(false or false)
-
-if ("x") {
-	print("hello!")
-} else {
-	print("false branch")
+var f = \ x y {
+	print("first value is  ", x)
+	print("second value is ", y)
 }
+
+f("this is the first value!", 37826434234)
+print(18446744073709551615)
