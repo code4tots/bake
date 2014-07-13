@@ -22,6 +22,8 @@ struct Object {
 	
 	virtual Pointer truth();
 	
+	virtual Pointer len();
+	
 	// logical operators
 	Pointer logical_or(Pointer);
 	Pointer logical_and(Pointer);

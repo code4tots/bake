@@ -1,4 +1,4 @@
-Dict::Dict(Pairs pairs) : Object(DICT_TYPE), x(pairs) {}
+Dict::Dict(Pairs pairs) : Container(DICT_TYPE), x(pairs) {}
 
 Pointer Dict::repr() {
 	std::string s("{");
@@ -14,7 +14,6 @@ Pointer Dict::repr() {
 	return new Str(s);
 }
 
-Pointer Dict::truth() {
-	std::cout << x.size() << std::endl;
-	return new Bool(x.size() != 0);
+Pointer Dict::len() {
+	return new Int(x.size());
 }

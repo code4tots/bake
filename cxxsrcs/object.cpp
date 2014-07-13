@@ -19,6 +19,8 @@ Pointer Object::hash() { return new Int((size_t)(this)); }
 
 Pointer Object::truth() { return new Bool(true); }
 
+Pointer Object::len() { return not_supported(); }
+
 // logical operators
 Pointer Object::logical_or(Pointer p) { return truth()->cxxbool() ? this : p; }
 Pointer Object::logical_and(Pointer p) { return truth()->cxxbool() ? p : this; }

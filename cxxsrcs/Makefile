@@ -1,4 +1,4 @@
-HHDR=pointer.h object.h nil.h bool.h int.h float.h str.h list.h set.h dict.h func.h stdlib.h
+HHDR=pointer.h object.h nil.h bool.h int.h float.h container.h str.h list.h set.h dict.h func.h stdlib.h
 HDR=$(HHDR:.h=.hpp)
 SRC=$(HHDR:.h=.cpp)
 

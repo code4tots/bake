@@ -1,4 +1,4 @@
-List::List(Args a) : Object(LIST_TYPE), x(a) {}
+List::List(Args a) : Container(LIST_TYPE), x(a) {}
 
 // string representation
 Pointer List::repr() {
@@ -13,6 +13,6 @@ Pointer List::repr() {
 	return new Str(s);
 }
 
-Pointer List::truth() {
-	return new Bool(x.size() != 0);
+Pointer List::len() {
+	return new Int(x.size());
 }

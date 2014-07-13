@@ -1,4 +1,4 @@
-Set::Set(Args args) : Object(SET_TYPE), x(args) {}
+Set::Set(Args args) : Container(SET_TYPE), x(args) {}
 
 // string representation
 Pointer Set::repr() {
@@ -13,6 +13,6 @@ Pointer Set::repr() {
 	return new Str(s);
 }
 
-Pointer Set::truth() {
-	return new Bool(x.size() != 0);
+Pointer Set::len() {
+	return new Int(x.size());
 }

@@ -1,5 +1,6 @@
-Str::Str(std::string s) : Object(STR_TYPE), x(s) {}
+Str::Str(std::string s) : Container(STR_TYPE), x(s) {}
 
 Pointer Str::str() { return this; }
 
-Pointer Str::truth() { return new Bool(x.size() != 0); }
+Pointer Str::len() { return new Int(x.size()); }
+
