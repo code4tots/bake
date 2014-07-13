@@ -2,7 +2,7 @@
 
 run: all
 	./a.out
-	
+
 clean:
 	rm -rf a.out cake.cpp __pycache__ stub.cpp cream.cpp
 	cd cxxsrcs && make clean
