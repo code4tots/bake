@@ -1,64 +1,326 @@
 import re
 
-binary_operators = {
-	'+' : 'add',
-	'-' : 'subtract',
-	'*' : 'multiply',
-	'/' : 'divide',
-	'%' : 'modulo',
-	
-	'==' : 'equal',
-	'<' : 'less',
-	'>' : 'greater',
-	'<=' : 'greater_equal',
-	'>=' : 'less_equal',
-	
-	'and' : 'logical_and',
-	'or' : 'logical_or'
-}
+symbols = set()
+keywords = set()
 
-keywords = ('var', 'if', 'else') + tuple(k for k in binary_operators.keys() if k.isalpha())
+def singleton(cls):
+	return cls()
 
-symbols = tuple(set(
-	tuple(k for k in binary_operators.keys() if not k.isalpha()) + (
-	# grouping/delimier
-	'(', ')', '{', '}', '[', ']',
-	',', ':', '\\',
+class ParseException(Exception):
+	pass
+
+class Parser(object):
+	def __call__(self,stream):
+		save = stream.tell()
+		result = self.parse(stream)
+		if result is None:
+			stream.seek(save)
+		return result
 	
-	# assignment
-	'=')))
+	def parse(self,stream):
+		return self._parse(stream)
+
+class OneOf(Parser):
+	def __init__(self,parsers):
+		self.parsers = parsers
+	
+	def __call__(self,stream):
+		for parser in self.parsers:
+			parse = parser(stream)
+			if parse is not None:
+				return parse
+
+class ZeroOrMore(Parser):
+	def __init__(self,parser):
+		self.parser = parser
+	
+	def __call__(self,stream):
+		parser = self.parser
+		results = []
+		while True:
+			result = parser(stream)
+			if result is None:
+				return results
+			results.append(result)
+
+class CommaSeparated(Parser):
+	def __init__(self,parser):
+		self.parser = parser
+	
+	def __call__(self,stream):
+		parser = self.parser
+		results = []
+		while True:
+			result = parser(stream)
+			if result is None:
+				return None
+			results.append(result)
+			if not Comma(stream):
+				return results
+
+class Symbol(Parser):
+	def __init__(self,symbol):
+		self.symbol = symbol
+		symbols.add(symbol)
+	
+	def _parse(self,stream):
+		if stream.peek() == self.symbol:
+			return next(stream)
+
+class Keyword(Parser):
+	def __init__(self,keyword):
+		self.keyword = keyword
+		keywords.add(keyword)
+	
+	def _parse(self,stream):
+		if stream.peek() == self.keyword:
+			return next(stream)
+
+@singleton
+class Int(Parser):
+	def _parse(self,stream):
+		if stream.peek().type_ == 'int':
+			i = int(next(stream))
+			if i > 2 ** 31:
+				i = '"' + str(i) + '"'
+			return '(new Int('+str(i)+'))'
+
+@singleton
+class Float(Parser):
+	def _parse(self,stream):
+		if stream.peek().type_ == 'float':
+			return '(new Float('+next(stream)+'))'
+
+@singleton
+class Str(Parser):
+	def _parse(self,stream):
+		if stream.peek().type_ == 'str':
+			return '(new Str("'+''.join(
+				'\\'+hex(ord(c))[1:] for c in eval(next(stream)))+'"))'
+
+@singleton
+class Name(Parser):
+	def _parse(self,stream):
+		if stream.peek().type_ == 'name':
+			return 'x_x'+next(stream)
+
+@singleton
+class ParentheticalExpression(Parser):
+	def _parse(self,stream):
+		if OpenParenthesis(stream):
+			e = Expression(stream)
+			if e is not None:
+				if CloseParenthesis(stream):
+					return e
+
+@singleton
+class PrimaryExpression(Parser):
+	def _parse(self,stream):
+		for parser in (Int,Float,Str,Name,ParentheticalExpression):
+			result = parser(stream)
+			if result is not None:
+				return result
+		
+		if OpenParenthesis(stream):
+			e = Expression(stream)
+			if CloseParenthesis(stream):
+				return e
+
+@singleton
+class SecondaryExpression(Parser):
+	def _parse(self,stream):
+		e = PrimaryExpression(stream)
+		if e is not None:
+			while True:
+				save = stream.tell()
+				# function call
+				if OpenParenthesis(stream):
+					args = CommaSeparated(Expression)(stream)
+					if args is not None and CloseParenthesis(stream):
+						e = 'function_call(%s,{%s})'%(e,','.join(map(str,args)))
+					else:
+						stream.seek(save)
+						return e
+				# subscript
+				elif OpenBracket(stream):
+					arg = Expression(stream)
+					if arg is not None:
+						if CloseBracket(stream):
+							e = 'subscript(%s,%s)'%(e,arg)
+						elif Equal(stream):
+							v = Expression(stream)
+							if v is not None and CloseBracket(stream):
+								e = 'subscript_assign(%s,%s,%s)'%(e,arg,v)
+							else:
+								stream.seek(save)
+								return e
+						else:
+							stream.seek(save)
+							return e
+					else:
+						stream.seek(save)
+						return e
+				else:
+					return e
+
+class PrefixExpression(Parser):
+	def __init__(self,operators,higher_priority_expression):
+		self.operators = operators # operator name pairs
+		self.higher_priority_expression = higher_priority_expression
+	
+	def _parse(self,stream):
+		for operator,operator_name in self.operators:
+			op = operator(stream)
+			if op is not None:
+				e = self.higher_priority_expression(stream)
+				if e is not None:
+					return '%s(%s)'%(operator_name,e)
+		else:
+			return self.higher_priority_expression(stream)
+
+class BinaryExpression(Parser):
+	def __init__(self,operators,higher_priority_expression):
+		self.operators = operators # operator name pairs
+		self.higher_priority_expression = higher_priority_expression
+	
+	def _parse(self,stream):
+		a = self.higher_priority_expression(stream)
+		if a is not None:
+			for operator, operator_name in self.operators:
+				op = operator(stream)
+				if op is not None:
+					b = self.higher_priority_expression(stream)
+					if b is not None:
+						return '%s(%s,%s)' % (operator_name,a,b)
+					else:
+						return
+			else:
+				return a
+
+@singleton
+class ExpressionStatement(Parser):
+	def _parse(self,stream):
+		e = Expression(stream)
+		if e is not None:
+			if Semicolon(stream):
+				return e+';'
+
+@singleton
+class Declarator(Parser):
+	def _parse(self,stream):
+		name = Name(stream)
+		if name is not None:
+			if Equal(stream):
+				expression = Expression(stream)
+				if expression:
+					return '%s=%s'%(name,expression)
+				else:
+					return None
+			else:
+				return name
+
+@singleton
+class Declaration(Parser):
+	def _parse(self,stream):
+		if Var(stream):
+			decls = CommaSeparated(Declarator)(stream)
+			if Semicolon(stream):
+				return 'Pointer %s;'%','.join(decls)
+
+@singleton
+class SimpleAssignment(Parser):
+	def _parse(self,stream):
+		name = Name(stream)
+		if name is not None:
+			if Equal(stream):
+				expression = Expression(stream)
+				if expression is not None:
+					if Semicolon(stream):
+						return '%s=%s;'%(name,expression)
+
+@singleton
+class StatementBlock(Parser):
+	def _parse(self,stream):
+		if OpenBrace(stream):
+			statements = Statements(stream)
+			if CloseBrace(stream):
+				return '{%s}'%''.join(map(str,statements))
+
+@singleton
+class WhileStatement(Parser):
+	def _parse(self,stream):
+		if While(stream):
+			condition = Expression(stream)
+			if condition is not None:
+				body = StatementBlock(stream)
+				if body is not None:
+					return 'while(%s)%s'%(condition,body)
+
+Semicolon = Symbol(';')
+Comma = Symbol(',')
+OpenParenthesis = Symbol('(')
+CloseParenthesis = Symbol(')')
+OpenBracket = Symbol('[')
+CloseBracket = Symbol(']')
+OpenBrace = Symbol('{')
+CloseBrace = Symbol('}')
+Equal = Symbol('=')
+Var = Keyword('var')
+While = Keyword('while')
+Expression = (
+	BinaryExpression(
+		(
+			(Symbol('+'), 'add'),
+			(Symbol('-'), 'subtract')),
+		PrefixExpression(
+			(
+				(Symbol('+'), 'positive'),
+				(Symbol('-'), 'negative')),
+			SecondaryExpression)))
+
+Statement = OneOf((
+	ExpressionStatement,
+	Declaration,
+	SimpleAssignment,
+	StatementBlock,
+	WhileStatement))
+
+Statements = ZeroOrMore(Statement)
+
+@singleton
+class All(Parser):
+	def _parse(self,stream):
+		return 'void bake(){'+''.join(map(str,Statements(stream)))+'}\n'
 
 token_types = {
 	'int' : r'\d+(?!\.)',
 	'float' : r'\d+\.\d*',
 	'keyword' : '|'.join(keyword+r'(?!\w)' for keyword in keywords),
 	'name' : ''.join(r'(?!'+keyword+r'(?!\w))' for keyword in keywords)+r'(?!r\"|r\'|\d)\w+',
-	'str' : '|'.join('(?:'+s+')' for s in (r'\"(?:[^"]|(?:\\\"))*\"',r"\'(?:[^']|(?:\\\'))*\'",r'r\"[^"]*\"',r"r\'[^']*\'")),
-	'symbol' : '|'.join('(?:'+re.escape(symbol)+')' for symbol in reversed(sorted(symbols))),
-	'newline' : r'(?:[ \t]*\n)+',
+	'str' : '|'.join('(?:'+s+')' for s in (
+		r'\"(?:[^"]|(?:\\\"))*\"',
+		r"\'(?:[^']|(?:\\\'))*\'",
+		r'r\"[^"]*\"',
+		r"r\'[^']*\'")),
+	'symbol' : '|'.join('(?:'+re.escape(symbol)+')' for symbol in reversed(sorted(symbols)))
 }
-ignore_regex = re.compile(r'(?:(?:[ \t]+)|(?:\#[^\n]*))*')
+ignore_regex = re.compile(r'(?:(?:\s+)|(?:\#[^\n]*))*')
 err_regex = re.compile(r'\S+')
+for token_type, regex in token_types.items():
+	token_types[token_type] = re.compile(regex)
 
-# '()' and '[]' indicate expressions, and as such, inside such parentheses, newlines are insignificant.
-parentheses = {
-	'(' : ')',
-	'[' : ']',
-	
-	# Note that '{' and '}' braces are treated as a special case by the lexer.
-	# If the inner most brace during the lex is '{}', then newlines are significant.
-	# This is because '{}' determine code blocks, and in code blocks, we have statements
-	# for which whitespace is significant.
-	'{' : '}'
-}
-
-class ParseException(Exception):
-	pass
-
-for token_type in token_types:
-	token_types[token_type] = re.compile(token_types[token_type])
-
-parentheses_inverse = { v : k for k, v in parentheses.items() }
+def lex(string):
+	def token_generator():
+		i = ignore_regex.match(string).end()
+		while i < len(string):
+			for token_type, regex in token_types.items():
+				m = regex.match(string,i)
+				if m:
+					i = m.end()
+					yield Token(token_type,string,m.group(),m.start(),m.end())
+			i = ignore_regex.match(string,i).end()
+		yield Token('eof',string,'',len(string),len(string))
+	return TokenStream(token_generator())
 
 class Token(str):
 	def __new__(cls,type_,whole_string,token_string,start,end):
@@ -82,37 +344,6 @@ class Token(str):
 	def __repr__(self):
 		return repr((self.type_,self.token_string,self.start,self.end))
 
-def lex(string):
-	parenthesis_depth = {parenthesis : 0 for parenthesis in parentheses}
-	
-	parenthesis_stack = []
-	
-	i = ignore_regex.match(string).end() # skip ignorables
-	while i < len(string):
-		for token_type, regex in token_types.items():
-			m = regex.match(string,i)
-			if m:
-				i = m.end()
-				if token_type != 'newline' or not parenthesis_stack or parenthesis_stack[-1] == '{':
-					token = Token(token_type,string,m.group(),m.start(),m.end())
-					if token in parentheses:
-						parenthesis_stack.append(token)
-					
-					if token in parentheses_inverse:
-						if [parentheses_inverse[token]] == parenthesis_stack[-1:]:
-							parenthesis_stack.pop()
-						else:
-							raise ParseException('mismatched parenthesis')
-					
-					yield token
-				break
-		else:
-			raise ParseException('unrecognized token: ' + err_regex.match(string,i).group())
-		i = ignore_regex.match(string,i).end() # skip ignorables
-	
-	yield Token('newline',string,'\n',len(string),len(string))
-	yield Token('eof',string,'',len(string),len(string))
-
 class TokenStream(object):
 	def __init__(self,token_generator):
 		self.token_list = list(token_generator)
@@ -134,303 +365,11 @@ class TokenStream(object):
 	def tell(self):
 		return self.position
 
-def backtrack(parser):
-	def backtracking_parser(token_stream):
-		save = token_stream.tell()
-		result = parser(token_stream)
-		if not result:
-			token_stream.seek(save)
-		return result
-	return backtracking_parser
-
-
-def token_parser(token):
-	@backtrack
-	def parse_token(token_stream):
-		if next(token_stream) == token:
-			return token
-	return parse_token
-
-def alternation_parser(*parsers):
-	def parse_alternatives(token_stream):
-		for parser in parsers:
-			result = parser(token_stream)
-			if result:
-				return result
-	return parse_alternatives
-
-def modify_name_expression(name):
-	return 'x_x' + name
-
-@backtrack
-def parse_primary_expression(token_stream):
-	token = token_stream.peek()
-	type_ = token.type_
-	
-	if type_ in ('int', 'float', 'str', 'name') or token in ('(','[','{','\\'):
-		next(token_stream)
-		
-		if type_ == 'name':
-			return modify_name_expression(token)
-		
-		elif type_ in ('int','float','str'):
-			if type_ == 'str':
-				token = '"'+''.join('\\'+hex(ord(c))[1:] for c in eval(token))+'"'
-			elif type_ == 'int' and int(token) >= 2 ** 31:
-				token = '"'+token+'"'
-			return '(Pointer(new ' + type_.capitalize() + '('+ token + ')))'
-		
-		elif token == '(':
-			expression = parse_expression(token_stream)
-			if next(token_stream) == ')':
-				return expression
-		
-		elif token == '[':
-			expressions = parse_comma_separated_expressions(token_stream)
-			if next(token_stream) == ']':
-				return '(new List({'+','.join(expressions)+'}))'
-		
-		elif token == '{':
-			j = token_stream.tell()
-			
-			expressions = parse_comma_separated_expressions(token_stream)
-			if next(token_stream) == '}':
-				return '(new Set({'+','.join(expressions)+'}))'
-			else:
-				token_stream.seek(j)
-				pairs = parse_comma_separated_pairs(token_stream)
-				if next(token_stream) == '}':
-					return '(new Dict({'+','.join(pairs)+'}))'
-		
-		elif token == '\\':
-			arguments = []
-			while token_stream.peek().type_ == 'name':
-				arguments.append(modify_name_expression(next(token_stream)))
-			
-			body = parse_block_statement(token_stream)
-			return '(new Func([&](Args args) -> Pointer {auto i = args.begin(); Pointer '+','.join(argument+'=*i++' for argument in arguments)+';'+body+'return x_xnil; }))'
-
-@backtrack
-def parse_expression_pair(token_stream):
-	key = parse_expression(token_stream)
-	if not key:
-		return
-	if next(token_stream) != ':':
-		return
-	value = parse_expression(token_stream)
-	return '{'+key+','+value+'}'
-
-# no backtrack as even success may yield a falsey value
-def parse_comma_separated_pairs(token_stream):
-	pairs = []
-	while True:
-		pair = parse_expression_pair(token_stream)
-		if not pair:
-			return pairs
-		pairs.append(pair)
-		if token_stream.peek() != ',':
-			return pairs
-		next(token_stream) # consume ','
-
-def binary_expression_parser(parse_operator,parse_higher_priority_expression):
-	@backtrack
-	def parse_binary_expression(token_stream):
-		a = parse_higher_priority_expression(token_stream)
-		if not a:
-			return None
-		op = parse_operator(token_stream)
-		if not op:
-			return a
-		b = parse_higher_priority_expression(token_stream)
-		if not b:
-			return None
-		
-		
-		if op == '=':
-			print('inside equals')
-			return '('+a+'.x='+b+'.x)'
-		elif op not in binary_operators:
-			return '('+a+op+b+')'
-		else:
-			return a+'->'+binary_operators[op]+'('+b+')'
-	return parse_binary_expression
-
-def prefix_expression_parser(parse_operator,parse_higher_priority_expression):
-	@backtrack
-	def parse_prefix_expression(token_stream):
-		operator = parse_operator(token_stream)
-		if operator:
-			expression = parse_higher_priority_expression(token_stream)
-			if expression:
-				return '('+operator+expression+')'
-		else:
-			return parse_higher_priority_expression(token_stream)
-	return parse_prefix_expression
-		
-def postfix_expression_parser(parse_operator,parse_higher_priority_expression):
-	@backtrack
-	def parse_postfix_expression(token_stream):
-		expression = parse_higher_priority_expression(token_stream)
-		if not expression:
-			return None
-		operator = parse_operator(token_stream)
-		if not operator:
-			return expression
-		return '('+expression+operator+')'
-	return parse_postfix_expression
-
-# no backtrack -- may return falsey value even on success
-def parse_comma_separated_expressions(token_stream):
-	expressions = []
-	while True:
-		expression = parse_expression(token_stream)
-		if not expression:
-			return expressions
-		expressions.append(expression)
-		if token_stream.peek() != ',':
-			break
-		next(token_stream)
-	return expressions
-
-@backtrack
-def parse_function_arguments(token_stream):	
-	arguments = []
-	if next(token_stream) == '(':
-		arguments = parse_comma_separated_expressions(token_stream)
-		if next(token_stream) == ')':
-			return '({'+','.join(arguments)+'})'
-
-@backtrack
-def parse_subscript_argument(token_stream):
-	if next(token_stream) == '[':
-		argument = parse_expression(token_stream)
-		if argument and next(token_stream) == ']':
-			return '['+argument+']'
-
-parse_expression = (
-	binary_expression_parser(alternation_parser(*list(map(token_parser,('=','+=')))),
-		binary_expression_parser(alternation_parser(*list(map(token_parser,('or','and')))),
-			binary_expression_parser(alternation_parser(*list(map(token_parser,('==','<','>','<=','>=')))),
-				binary_expression_parser(alternation_parser(*list(map(token_parser,('+','-')))),
-					binary_expression_parser(alternation_parser(*list(map(token_parser,('*','/')))),
-						prefix_expression_parser(alternation_parser(*list(map(token_parser,('+','-')))),
-							postfix_expression_parser(alternation_parser(parse_function_arguments,parse_subscript_argument),
-								parse_primary_expression))))))))
-
-@backtrack
-def parse_empty_statement(token_stream):
-	if next(token_stream).type_ == 'newline':
-		return ';'
-
-@backtrack
-def parse_expression_statement(token_stream):
-	expression = parse_expression(token_stream)
-	if next(token_stream).type_ == 'newline':
-		return expression + ';'
-
-@backtrack
-def parse_declaration_statement(token_stream):
-	if next(token_stream) == 'var':
-		declarations = []
-		while True:
-			if token_stream.peek().type_ != 'name':
-				return
-			
-			name = modify_name_expression(next(token_stream))
-			
-			if token_stream.peek() == '=':
-				next(token_stream)
-				expression = parse_expression(token_stream)
-				if not expression:
-					return None
-				declarations.append(name + '=' + expression)
-			
-			else:
-				declarations.append(name)
-			
-			if token_stream.peek() != ',':
-				break
-			
-			next(token_stream) # consume ','
-		
-		if next(token_stream).type_ == 'newline':
-			return 'Pointer ' + ','.join(declarations) + ';'
-
-@backtrack
-def parse_if_statement(token_stream):
-	if next(token_stream) == 'if':
-		condition = parse_expression(token_stream)
-		if condition:
-			if_block = parse_block_statement(token_stream)
-			if if_block:
-				statement = 'if('+condition+'->truth()->cxxbool())'+if_block
-				if token_stream.peek() == 'else':
-					next(token_stream)
-					else_block = parse_block_statement(token_stream)
-					if else_block:
-						statement += 'else'+else_block
-					else:
-						return
-				return statement
-
-@backtrack
-def parse_while_statement(token_stream):
-	if next(token_stream) == 'while':
-		condition = parse_expression(token_stream)
-		if condition:
-			block = parse_block_statement(token_stream)
-			if block:
-				return 'while('+condition+'->truth()->cxxbool())'+block
-
-# no backtrack -- may return falsey value even on success
-def parse_statements(token_stream):
-	statements = []
-	while True:
-		statement = parse_statement(token_stream)
-		if not statement:
-			return [statement for statement in statements if statement != ';']
-		statements.append(statement)
-
-@backtrack
-def parse_block_statement(token_stream):
-	if next(token_stream) == '{':
-		statements = parse_statements(token_stream)
-		if next(token_stream) == '}':
-			return '{'+''.join(statements)+'}'
-
-@backtrack
-def parse_statement(token_stream):
-	# any(parser(token_stream) for parser in (...))
-	# does not work because it returns a bool instead of the first true value
-	for parser in (parse_empty_statement,parse_expression_statement,parse_block_statement,parse_declaration_statement,parse_if_statement,parse_while_statement):
-		result = parser(token_stream)
-		if result:
-			return result
-
-def parse(token_stream):
-	statements = parse_statements(token_stream)
-	token = token_stream.peek()
-	if token.type_ == 'eof':
-		return ''.join(statements)
-	raise ParseException('invalid statement on line ' + str(token.line_number) + '\n' + token.line)
-
-
 if __name__ == '__main__':
 	with open('cake.bake') as f:
 		code = f.read()
 	
-	try:		
-		cxx = parse(TokenStream(lex(code)))
+	translation = All(lex(code))
 	
-	except ParseException as e:
-		print(str(e))
-		exit(1)
-	
-	else:
-		with open('cream.cpp', 'w') as f:
-			f.write('int main() {')
-			f.write(cxx)
-			f.write('}\n')
-
-
-
+	with open('cream.cpp') as f:
+		f.write(translation)
