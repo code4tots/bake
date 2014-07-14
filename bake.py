@@ -311,6 +311,9 @@ If = Keyword('if')
 Else = Keyword('else')
 Break = Keyword('break')
 Expression = (
+	PrefixExpression(
+		(
+			(Keyword('not'), 'not_'),),
 	BinaryExpression(
 		(
 			(Symbol('=='), 'equal'),
@@ -323,7 +326,7 @@ Expression = (
 		(
 			(Symbol('+'), 'positive'),
 			(Symbol('-'), 'negative')),
-		SecondaryExpression))))
+	SecondaryExpression)))))
 
 Statement = OneOf((
 	ExpressionStatement,
