@@ -1,3 +1,4 @@
+Pointer::Pointer() : x(NULL) {}
 Pointer::Pointer(Object * p) : x(p) {}
 Pointer::Pointer(const Pointer& p) : x(p.x) {}
 Pointer& Pointer::operator=(const Pointer& p) { x = p.x; return *this;}

@@ -32,6 +32,7 @@ typedef std::initializer_list<Pointer>     Args;
 
 struct Pointer {
 	Object * x;
+	Pointer();
 	Pointer(Object *);
 	Pointer(const Pointer&);
 	Pointer& operator=(const Pointer&);

@@ -1,6 +1,4 @@
-var x = 0
-while (x < 10) {
-	print(x)
-	x = x + 1.23456789
-}
-
+print("program start!")
+var y = {1:2}
+y[2] = 3
+print(y)

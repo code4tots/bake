@@ -1,5 +1,33 @@
+std::string Object::cxxtype_name() {
+	switch(type) {
+	case NIL_TYPE:
+		return "nil";
+	case BOOL_TYPE:
+		return "bool";
+	case INT_TYPE:
+		return "int";
+	case FLOAT_TYPE:
+		return "float";
+	case STR_TYPE:
+		return "str";
+	case LIST_TYPE:
+		return "list";
+	case SET_TYPE:
+		return "set";
+	case DICT_TYPE:
+		return "dict";
+	case FUNC_TYPE:
+		return "func";
+	}
+	return "invalid";
+}
+
+Pointer Object::type_name() {
+	return new Str(cxxtype_name());
+}
+
 Pointer Object::call(Args) { return not_supported(); }
-Pointer Object::subscript(Pointer) { return not_supported(); }
+Pointer& Object::subscript(Pointer) { throw NotSupported(); }
 
 // binary operators
 Pointer Object::add(Pointer) { return not_supported(); }
@@ -37,5 +65,7 @@ double Object::cxxfloat() { return ((Float*)this)->x; }
 std::string& Object::cxxstr() { return ((Str*)this)->x; }
 
 // protected
-Object::Object(Type t) : type(t) {}
+Object::Object(Type t) : type(t) {
+	std::cout << "Object of type " << cxxtype_name() << " created" << std::endl;
+}
 

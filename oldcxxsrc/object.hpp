@@ -1,8 +1,11 @@
 struct Object {
 	const Type type;
 	
+	std::string cxxtype_name();
+	Pointer type_name();
+	
 	virtual Pointer call(Args);
-	virtual Pointer subscript(Pointer);
+	virtual Pointer& subscript(Pointer);
 	
 	// arithmetic operators
 	virtual Pointer add(Pointer);

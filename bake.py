@@ -1,6 +1,5 @@
 import re
 
-
 binary_operators = {
 	'+' : 'add',
 	'-' : 'subtract',
@@ -246,7 +245,11 @@ def binary_expression_parser(parse_operator,parse_higher_priority_expression):
 		if not b:
 			return None
 		
-		if op not in binary_operators:
+		
+		if op == '=':
+			print('inside equals')
+			return '('+a+'.x='+b+'.x)'
+		elif op not in binary_operators:
 			return '('+a+op+b+')'
 		else:
 			return a+'->'+binary_operators[op]+'('+b+')'
@@ -297,14 +300,21 @@ def parse_function_arguments(token_stream):
 		if next(token_stream) == ')':
 			return '({'+','.join(arguments)+'})'
 
+@backtrack
+def parse_subscript_argument(token_stream):
+	if next(token_stream) == '[':
+		argument = parse_expression(token_stream)
+		if argument and next(token_stream) == ']':
+			return '['+argument+']'
+
 parse_expression = (
-	binary_expression_parser(alternation_parser(token_parser('=')),
+	binary_expression_parser(alternation_parser(*list(map(token_parser,('=','+=')))),
 		binary_expression_parser(alternation_parser(*list(map(token_parser,('or','and')))),
 			binary_expression_parser(alternation_parser(*list(map(token_parser,('==','<','>','<=','>=')))),
 				binary_expression_parser(alternation_parser(*list(map(token_parser,('+','-')))),
 					binary_expression_parser(alternation_parser(*list(map(token_parser,('*','/')))),
 						prefix_expression_parser(alternation_parser(*list(map(token_parser,('+','-')))),
-							postfix_expression_parser(parse_function_arguments,
+							postfix_expression_parser(alternation_parser(parse_function_arguments,parse_subscript_argument),
 								parse_primary_expression))))))))
 
 @backtrack
