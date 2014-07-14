@@ -1,4 +1,4 @@
-print("program start!")
-var y = {1:2}
-y[2] = 3
-print(y)
+print("program start!");
+var y = {1:2};
+y[2=3];
+print(y);

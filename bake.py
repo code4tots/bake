@@ -114,12 +114,27 @@ class ParentheticalExpression(Parser):
 					return e
 
 @singleton
+class ExpressionPair(Parser):
+	def _parse(self,stream):
+		key = Expression(stream)
+		if key is not None:
+			if Colon(stream):
+				value = Expression(stream)
+				if value is not None:
+					return '{%s,%s}'%(key,value)
+
+@singleton
 class PrimaryExpression(Parser):
 	def _parse(self,stream):
 		for parser in (Int,Float,Str,Name,ParentheticalExpression):
 			result = parser(stream)
 			if result is not None:
 				return result
+		
+		if OpenBrace(stream):
+			pairs = ZeroOrMore(ExpressionPair)(stream)
+			if CloseBrace(stream):
+				return '{'+','.join(map(str,pairs))+'}'
 		
 		if OpenParenthesis(stream):
 			e = Expression(stream)
@@ -257,6 +272,7 @@ class WhileStatement(Parser):
 					return 'while(%s)%s'%(condition,body)
 
 Semicolon = Symbol(';')
+Colon = Symbol(':')
 Comma = Symbol(',')
 OpenParenthesis = Symbol('(')
 CloseParenthesis = Symbol(')')
@@ -290,7 +306,12 @@ Statements = ZeroOrMore(Statement)
 @singleton
 class All(Parser):
 	def _parse(self,stream):
-		return 'void bake(){'+''.join(map(str,Statements(stream)))+'}\n'
+		statements = Statements(stream)
+		token = stream.peek()
+		if token.type_ != 'eof':
+			raise ParseException(
+				'invalid statement on line %s: %s\n%s' % (token.line_number,token,token.line))
+		return 'void bake(){'+''.join(map(str,statements))+'}\n'
 
 token_types = {
 	'int' : r'\d+(?!\.)',
@@ -318,6 +339,13 @@ def lex(string):
 				if m:
 					i = m.end()
 					yield Token(token_type,string,m.group(),m.start(),m.end())
+					break
+			else:
+				m = err_regex.match(string,i)
+				t = Token('err',string,m.group(),m.start(),m.end())
+				raise ParseException(
+					'Unrecognized token on line %s: %s\n%s' %
+					(t.line_number,t.token_string,t.line))
 			i = ignore_regex.match(string,i).end()
 		yield Token('eof',string,'',len(string),len(string))
 	return TokenStream(token_generator())
@@ -366,10 +394,18 @@ class TokenStream(object):
 		return self.position
 
 if __name__ == '__main__':
-	with open('cake.bake') as f:
-		code = f.read()
+	try:
+		with open('cake.bake') as f:
+			code = f.read()
+		
+		translation = All(lex(code))
+		
+		with open('cream.cpp','w') as f:
+			f.write(translation)
 	
-	translation = All(lex(code))
-	
-	with open('cream.cpp') as f:
-		f.write(translation)
+	except ParseException as e:
+		print('\n'.join('^^^^^^^^^^ '+line for line in str(e).splitlines()))
+		exit(1)
+		#print(re.compile(r'$').sub(str(e),'*** '))
+
+
