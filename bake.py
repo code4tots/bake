@@ -288,8 +288,12 @@ class IfStatement(Parser):
 							return 'if(%s)%selse%s'%(to_bool(condition),body,eblock)
 					else:
 						return 'if(%s)%s'%(to_bool(condition),body)
-							
-							
+
+@singleton
+class BreakStatement(Parser):
+	def _parse(self,stream):
+		if Break(stream) and Semicolon(stream):
+			return 'break;'
 
 Semicolon = Symbol(';')
 Colon = Symbol(':')
@@ -303,23 +307,32 @@ CloseBrace = Symbol('}')
 Equal = Symbol('=')
 Var = Keyword('var')
 While = Keyword('while')
+If = Keyword('if')
+Else = Keyword('else')
+Break = Keyword('break')
 Expression = (
+	BinaryExpression(
+		(
+			(Symbol('=='), 'equal'),
+			(Symbol('<'), 'less')),
 	BinaryExpression(
 		(
 			(Symbol('+'), 'add'),
 			(Symbol('-'), 'subtract')),
-		PrefixExpression(
-			(
-				(Symbol('+'), 'positive'),
-				(Symbol('-'), 'negative')),
-			SecondaryExpression)))
+	PrefixExpression(
+		(
+			(Symbol('+'), 'positive'),
+			(Symbol('-'), 'negative')),
+		SecondaryExpression))))
 
 Statement = OneOf((
 	ExpressionStatement,
 	Declaration,
 	SimpleAssignment,
 	StatementBlock,
-	WhileStatement))
+	WhileStatement,
+	IfStatement,
+	BreakStatement))
 
 Statements = ZeroOrMore(Statement)
 
