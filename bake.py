@@ -83,19 +83,19 @@ class Int(Parser):
 			i = int(next(stream))
 			if i > 2 ** 31:
 				i = '"' + str(i) + '"'
-			return '(new Int('+str(i)+'))'
+			return 'Pointer(new Int('+str(i)+'))'
 
 @singleton
 class Float(Parser):
 	def _parse(self,stream):
 		if stream.peek().type_ == 'float':
-			return '(new Float('+next(stream)+'))'
+			return 'Pointer(new Float('+next(stream)+'))'
 
 @singleton
 class Str(Parser):
 	def _parse(self,stream):
 		if stream.peek().type_ == 'str':
-			return '(new Str("'+''.join(
+			return 'Pointer(new Str("'+''.join(
 				'\\'+hex(ord(c))[1:] for c in eval(next(stream)))+'"))'
 
 @singleton
@@ -134,7 +134,7 @@ class PrimaryExpression(Parser):
 		if OpenBrace(stream):
 			pairs = ZeroOrMore(ExpressionPair)(stream)
 			if CloseBrace(stream):
-				return '{'+','.join(map(str,pairs))+'}'
+				return 'Pointer(new Dict({'+','.join(map(str,pairs))+'}))'
 		
 		if OpenParenthesis(stream):
 			e = Expression(stream)
@@ -152,7 +152,7 @@ class SecondaryExpression(Parser):
 				if OpenParenthesis(stream):
 					args = CommaSeparated(Expression)(stream)
 					if args is not None and CloseParenthesis(stream):
-						e = 'function_call(%s,{%s})'%(e,','.join(map(str,args)))
+						e = '%s->call({%s})'%(e,','.join(map(str,args)))
 					else:
 						stream.seek(save)
 						return e
@@ -161,11 +161,11 @@ class SecondaryExpression(Parser):
 					arg = Expression(stream)
 					if arg is not None:
 						if CloseBracket(stream):
-							e = 'subscript(%s,%s)'%(e,arg)
+							e = '%s->getitem(%s)'%(e,arg)
 						elif Equal(stream):
 							v = Expression(stream)
 							if v is not None and CloseBracket(stream):
-								e = 'subscript_assign(%s,%s,%s)'%(e,arg,v)
+								e = '%s->setitem(%s,%s)'%(e,arg,v)
 							else:
 								stream.seek(save)
 								return e
@@ -189,7 +189,7 @@ class PrefixExpression(Parser):
 			if op is not None:
 				e = self.higher_priority_expression(stream)
 				if e is not None:
-					return '%s(%s)'%(operator_name,e)
+					return '%s->%s()'%(e,operator_name)
 		else:
 			return self.higher_priority_expression(stream)
 
@@ -206,7 +206,7 @@ class BinaryExpression(Parser):
 				if op is not None:
 					b = self.higher_priority_expression(stream)
 					if b is not None:
-						return '%s(%s,%s)' % (operator_name,a,b)
+						return '%s->%s(%s)' % (a,operator_name,b)
 					else:
 						return
 			else:
