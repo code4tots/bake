@@ -1,11 +1,10 @@
-.PHONY: clean all run stub.cpp
+.PHONY: clean all run
 
 run: all
 	./a.out
 
 clean:
-	rm -rf a.out cake.cpp __pycache__ stub.cpp cream.cpp
-	cd cxxsrcs && make clean
+	rm -rf a.out cake.cpp __pycache__ cream.cpp
 
 all: a.out
 
@@ -17,7 +16,3 @@ cream.cpp: cake.bake bake.py
 
 a.out: cake.cpp
 	g++ cake.cpp -I/usr/local/include/ --std=c++11 -lgmpxx -lgmp -L/usr/local/lib -Wall -Wfatal-errors -Wpedantic
-
-stub.cpp:
-	cd cxxsrcs && make && cp stub.cpp ../stub.cpp
-
