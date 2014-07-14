@@ -6,6 +6,9 @@ keywords = set()
 def singleton(cls):
 	return cls()
 
+def to_bool(s):
+	return s+'->truth()->cxxbool()'
+
 class ParseException(Exception):
 	pass
 
@@ -269,7 +272,24 @@ class WhileStatement(Parser):
 			if condition is not None:
 				body = StatementBlock(stream)
 				if body is not None:
-					return 'while(%s)%s'%(condition,body)
+					return 'while(%s)%s'%(to_bool(condition),body)
+
+@singleton
+class IfStatement(Parser):
+	def _parse(self,stream):
+		if If(stream):
+			condition = Expression(stream)
+			if condition is not None:
+				body = StatementBlock(stream)
+				if body is not None:
+					if Else(stream):
+						eblock = StatementBlock(stream)
+						if eblock is not None:
+							return 'if(%s)%selse%s'%(to_bool(condition),body,eblock)
+					else:
+						return 'if(%s)%s'%(to_bool(condition),body)
+							
+							
 
 Semicolon = Symbol(';')
 Colon = Symbol(':')

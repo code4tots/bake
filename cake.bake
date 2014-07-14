@@ -1,5 +1,6 @@
 print("program start!");
 var y = {1:2};
 print(y);
+print(y[1]);
 y[2=3];
 print(y);
