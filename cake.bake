@@ -1,8 +1,1 @@
-var i = 0;
-print(i or (i+1));
-print(2 * 5);
-print("hello " + "world");
-print(3 * "for");
-print("five " * 6);
-print([1,2,3]);
-
+print(1+2+3);
