@@ -13,6 +13,7 @@ class ParseException(Exception):
 	pass
 
 class Parser(object):
+	logical_operator_used = [False]
 	def __call__(self,stream):
 		save = stream.tell()
 		result = self.parse(stream)
@@ -134,6 +135,11 @@ class PrimaryExpression(Parser):
 			if result is not None:
 				return result
 		
+		if OpenBracket(stream):
+			values = CommaSeparated(Expression)(stream)
+			if values is not None and CloseBracket(stream):
+				return 'Pointer(new List({'+','.join(map(str,values))+'}))'
+		
 		if OpenBrace(stream):
 			pairs = ZeroOrMore(ExpressionPair)(stream)
 			if CloseBrace(stream):
@@ -209,11 +215,30 @@ class BinaryExpression(Parser):
 				if op is not None:
 					b = self.higher_priority_expression(stream)
 					if b is not None:
-						return '%s->%s(%s)' % (a,operator_name,b)
+						return self.constructor(op,operator_name,a,b)
 					else:
 						return
 			else:
 				return a
+	
+	def constructor(self,operator,operator_name,first,second):
+		return '%s->%s(%s)'%(first,operator_name,second)
+
+class LogicalBinaryOperator(BinaryExpression):
+	def __init__(self,higher_priority_expression):
+		super(LogicalBinaryOperator,self).__init__((
+			(Or,None),
+			(And,None)),
+			higher_priority_expression)
+	
+	def constructor(self,operator,operator_name,first,second):
+		self.logical_operator_used[0] = True
+		if operator == 'and':
+			return '(t=%s,t->truth()->cxxbool()?%s:t)'%(first,second)
+		elif operator == 'or':
+			return '(t=%s,t->truth()->cxxbool()?t:%s)'%(first,second)
+		else:
+			raise Exception(operator,operator_name,operator=='or')
 
 @singleton
 class ExpressionStatement(Parser):
@@ -310,23 +335,38 @@ While = Keyword('while')
 If = Keyword('if')
 Else = Keyword('else')
 Break = Keyword('break')
+And = Keyword('and')
+Or = Keyword('or')
 Expression = (
 	PrefixExpression(
 		(
 			(Keyword('not'), 'not_'),),
+	LogicalBinaryOperator(
 	BinaryExpression(
 		(
 			(Symbol('=='), 'equal'),
-			(Symbol('<'), 'less')),
+			(Symbol('<'), 'less'),
+			(Symbol('>'), 'greater'),
+			(Symbol('<='), 'less_equal'),
+			(Symbol('>='), 'greater_equal')),
 	BinaryExpression(
 		(
 			(Symbol('+'), 'add'),
 			(Symbol('-'), 'subtract')),
+	BinaryExpression(
+		(
+			(Symbol('*'), 'multiply'),
+			(Symbol('/'), 'divide'),
+			(Symbol('%'), 'modulo')),
+	BinaryExpression(
+		(
+			(Symbol('<<'), 'left_shift'),
+			(Symbol('>>'), 'right_shift')),
 	PrefixExpression(
 		(
 			(Symbol('+'), 'positive'),
 			(Symbol('-'), 'negative')),
-	SecondaryExpression)))))
+	SecondaryExpression))))))))
 
 Statement = OneOf((
 	ExpressionStatement,
@@ -342,12 +382,13 @@ Statements = ZeroOrMore(Statement)
 @singleton
 class All(Parser):
 	def _parse(self,stream):
+		self.logical_operator_used[0] = False
 		statements = Statements(stream)
 		token = stream.peek()
 		if token.type_ != 'eof':
 			raise ParseException(
 				'invalid statement on line %s: %s\n%s' % (token.line_number,token,token.line))
-		return 'void bake(){'+''.join(map(str,statements))+'}\n'
+		return 'void bake(){'+('Pointer t;'if self.logical_operator_used[0] else '')+''.join(map(str,statements))+'}\n'
 
 token_types = {
 	'int' : r'\d+(?!\.)',
