@@ -1,7 +1,15 @@
+from functools import reduce
 import re
 
 class ParseException(Exception):
 	pass
+
+class Ast(str):
+	def __new__(cls,s,**kwargs):
+		self = super(Ast,cls).__new__(cls,s)
+		for k, v in kwargs.items():
+			setattr(self,k,v)
+		return self
 
 class Parser(object):
 	def __call__(self,stream):
@@ -52,9 +60,16 @@ class Keyword(TokenMatcher):
 		keywords.add(keyword)
 
 class Symbol(TokenMatcher):
-	def __init__(self,symbol):
+	def __init__(self,symbol,name=None):
 		super(Symbol,self).__init__(symbol)
 		symbols.add(symbol)
+		self.name = name
+	
+	def _parse(self,stream):
+		result = super(Symbol,self)._parse(stream)
+		if result is not None:
+			result.name = self.name
+			return result
 
 class Or(Parser):
 	def __init__(self,parsers):
@@ -97,7 +112,7 @@ class ZeroOrMore(Parser):
 
 class BinaryOperation(Parser):
 	def action(self,left,operator,right):
-		return ['binary-operation', left, operator, right]
+		return Ast('%s.%s(%s)'%(left,operator.name,right))
 	
 	def __init__(self,associativity,operator_parser,higher_priority_expression_parser):
 		if associativity not in ('left','right'):
@@ -138,9 +153,13 @@ class BinaryOperation(Parser):
 		
 		return e
 
+class LazyBinaryOperation(BinaryOperation):
+	def action(self,left,operator,right):
+		return Ast('(%s%s%s)'%(left,operator.name,right))
+
 class TernaryOperation(Parser):
 	def action(self,left_expression,left_operator,middle_expression,right_operator,right_expression):
-		return ['ternary-operation',left_expression,left_operator,middle_expression,right_operator,right_expression]
+		return Ast('%s.%s(%s,%s)'%(left_expression,left_operator.name,middle_expression,right_expression))
 	
 	def __init__(self,associativity,left_operator_parser,right_operator_parser,higher_priority_expression_parser):
 		self.binary_operation_parser = BinaryOperation(
@@ -157,9 +176,14 @@ class TernaryOperation(Parser):
 	def _parse(self,stream):
 		return self.binary_operation_parser(stream)
 
+class LazyTernaryOperation(TernaryOperation):
+	def action(self,left_expression,left_operator,middle_expression,right_operator,right_expression):
+		return Ast('(%s%s%s%s%s)'%(left_expression,left_operator.name,middle_expression,right_operator.name,right_expression))
+
+
 class PrefixOperation(Parser):
 	def action(self,operator,expression):
-		return ['prefix-operation', operator, expression]
+		return Ast('%s.%s()'%(expression,operator.name))
 	
 	def __init__(self,operator_parser,higher_priority_expression_parser):
 		self.operator_parser = ZeroOrMore(operator_parser,lambda ops : ops)
@@ -179,7 +203,7 @@ class PrefixOperation(Parser):
 
 class PostfixOperation(Parser):
 	def action(self,expression,operator):
-		return ['postfix-operation', expression, operator]
+		return Ast('%s.%s()'%(expression,operator.name))
 	
 	def __init__(self,operator_parser,higher_priority_expression_parser):
 		self.operator_parser = ZeroOrMore(operator_parser, lambda ops: ops)
@@ -199,7 +223,7 @@ class PostfixOperation(Parser):
 
 class FunctionCall(PostfixOperation):
 	def action(self,expression,arguments):
-		return ['function-call', expression, arguments]
+		return Ast('%s.call({%s})'%(expression,','.join(arguments)))
 	
 	def __init__(self,higher_priority_expression_parser):
 		self.operator_parser = ZeroOrMore(And((
@@ -277,16 +301,16 @@ keywords = set()
 symbols = set()
 
 Expression = Proxy()
-Expressions = ZeroOrMore(Expression, lambda expressions : expressions)
+Expressions = ZeroOrMore(Expression, lambda expressions : ','.join(expressions))
 Statement = Proxy()
-Statements = ZeroOrMore(Statement, lambda statements : statements)
+Statements = ZeroOrMore(Statement, lambda statements : Ast('{'+''.join(statements)+'}'))
 
-Int = Action(TokenTypeMatcher('int'),lambda s : ['int',s])
-Float = Action(TokenTypeMatcher('float'),lambda s : ['float',s])
-Str = Action(TokenTypeMatcher('str'), lambda s : ['str',s])
-Name = Action(TokenTypeMatcher('name'),lambda s : ['variable',s])
+Int = Action(TokenTypeMatcher('int'),lambda s : Ast('Pointer::new_int('+s+')'))
+Float = Action(TokenTypeMatcher('float'),lambda s : Ast('Pointer::new_float('+s+')'))
+Str = Action(TokenTypeMatcher('str'), lambda s : Ast('(Pointer::new_str("'+s+'")'))
+Name = Action(TokenTypeMatcher('name'),lambda s : (lambda s: Ast(s))('x_x'+s))
 ParentheticalExpression = And((Symbol('('),Expression,Symbol(')')),lambda l, x, r: x)
-ListLiteralExpression = And((Symbol('{'),Expressions,Symbol('}')),lambda l,x,r:['list-literal',x])
+ListLiteralExpression = And((Symbol('{'),Expressions,Symbol('}')),lambda l,x,r: Ast('Pointer::new_list({'+x+'})'))
 FunctionLiteralExpression = And(
 	(Keyword('def'),
 		Symbol('['),
@@ -294,49 +318,57 @@ FunctionLiteralExpression = And(
 		Symbol(']'),
 		Statements,
 		Keyword('end')),
-	lambda def_, lb, args, rb, body, end_: ['function-literal', args, body])
+	lambda def_, lb, args, rb, body, end_:
+		'Pointer::new_func([&](Args args)->Pointer{auto i=args.begin();Pointer '+
+			','.join(a+'=*i++' for a in args)+';'+body+'return Pointer::new_nil();})')
 
-PrimaryExpression = Or((Int,Float,Str,Name,ParentheticalExpression))
+PrimaryExpression = Or((Int,Float,Str,Name,ParentheticalExpression,ListLiteralExpression,FunctionLiteralExpression))
 
 Expression.set_parser(
+	LazyBinaryOperation(
+		'right',
+		Symbol('=','='),
+	LazyTernaryOperation(
+		'left',
+		Symbol('?','?'),Symbol(':',':'),
+	LazyBinaryOperation(
+		'left',
+		Symbol('||','||'),
+	LazyBinaryOperation(
+		'left',
+		Symbol('&&','&&'),
+	BinaryOperation(
+		'left',
+		Or((Symbol('+','add'),Symbol('-','subtract'))),
+	BinaryOperation(
+		'left',
+		Or((Symbol('*','multiply'),Symbol('/','divide'),Symbol('%','modulo'))),
 	BinaryOperation(
 		'right',
-		Symbol('='),
-	TernaryOperation(
-		'left',
-		Symbol('?'),Symbol(':'),
-	BinaryOperation(
-		'left',
-		Symbol('||'),
-	BinaryOperation(
-		'left',
-		Symbol('&&'),
-	BinaryOperation(
-		'left',
-		Or((Symbol('+'),Symbol('-'))),
-	BinaryOperation(
-		'left',
-		Or((Symbol('*'),Symbol('/'),Symbol('%'))),
-	BinaryOperation(
-		'right',
-		Symbol('**'),
+		Symbol('**','exponent'),
 	PrefixOperation(
-		Or((Symbol('+'),Symbol('-'))),
+		Or((Symbol('+','positive'),Symbol('-','negative'))),
 	FunctionCall(
 	PrimaryExpression))))))))))
 
+ExpressionStatement = Action(Expression,lambda e:Ast(e+';'))
 
-ExpressionStatement = Action(Expression,lambda expression : ['expression', expression])
-
-IfElseStatement = And(
+IfElse = And(
 	(Keyword('if'),Expression,Statements,Keyword('else'),Statements,Keyword('end')),
-	lambda if_, condition, if_body, else_, else_body, end_: ['if-else',condition,if_body,else_body])
+	lambda if_, condition, if_body, else_, else_body, end_: Ast(
+		'if(%s)%selse%s'%(condition,if_body,else_body)))
 
-WhileStatement = And(
+While = And(
 	(Keyword('while'),Expression,Statements,Keyword('end')),
-	lambda while_, condition, body, end_: ['while',condition,body])
+	lambda while_, condition, body, end_: Ast('while(%s)%s'%(condition,body)))
 
-Statement.set_parser(Or((ExpressionStatement,IfElseStatement,WhileStatement)))
+Statement.set_parser(Or((ExpressionStatement,IfElse,While)))
+
+All = And(
+	(
+		Action(Statements,lambda ss : Ast('void bake()'+ss)),
+		TokenTypeMatcher('eof')),
+	lambda a,b : a)
 
 token_types = {
 	'int' : r'\d+(?!\.)',
@@ -355,17 +387,15 @@ err_regex = re.compile(r'\S+')
 for token_type, regex_string in token_types.items():
 	token_types[token_type] = re.compile(regex_string)
 
-statements = Statements(TokenStream(lex('''
-if 1
-	f[2]
-else
-	3
-end
-
-f = def [a b c]
+if __name__ == '__main__':
+	with open('cake.bake') as f:
+		recipe = f.read()
 	
-end
+	cake = All(TokenStream(lex(recipe)))
+	if cake is None:
+		print('failed to parse')
+		exit(1)
+	
+	with open('cream.cpp','w') as f:
+		f.write(cake)
 
-''')))
-for statement in statements:
-	print(statement)
