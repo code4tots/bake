@@ -1,5 +1,8 @@
 import re
 
+class ParseException(Exception):
+	pass
+
 class Parser(object):
 	def __call__(self,stream):
 		save = stream.save()
@@ -49,16 +52,9 @@ class Keyword(TokenMatcher):
 		keywords.add(keyword)
 
 class Symbol(TokenMatcher):
-	def __init__(self,symbol,name=None):
+	def __init__(self,symbol):
 		super(Symbol,self).__init__(symbol)
 		symbols.add(symbol)
-		self.name = name
-	
-	def _parse(self,stream):
-		result = super(Symbol,self)._parse(stream)
-		if result is not None:
-			result.name = self.name
-			return result
 
 class Or(Parser):
 	def __init__(self,parsers):
@@ -101,7 +97,7 @@ class ZeroOrMore(Parser):
 
 class BinaryOperation(Parser):
 	def action(self,left,operator,right):
-		return 'begin\n%s%soperator %s\n' % (left,right,operator.name)
+		return ['binary-operation', left, operator, right]
 	
 	def __init__(self,associativity,operator_parser,higher_priority_expression_parser):
 		if associativity not in ('left','right'):
@@ -142,9 +138,28 @@ class BinaryOperation(Parser):
 		
 		return e
 
+class TernaryOperation(Parser):
+	def action(self,left_expression,left_operator,middle_expression,right_operator,right_expression):
+		return ['ternary-operation',left_expression,left_operator,middle_expression,right_operator,right_expression]
+	
+	def __init__(self,associativity,left_operator_parser,right_operator_parser,higher_priority_expression_parser):
+		self.binary_operation_parser = BinaryOperation(
+			associativity,
+			And((left_operator_parser,higher_priority_expression_parser,right_operator_parser),lambda l,m,r:[l,m,r]),
+			higher_priority_expression_parser)
+		
+		def catch_action(left_expression,middle,right_expression):
+			left_operator, middle_expression, right_operator = middle
+			return self.action(left_expression,left_operator,middle_expression,right_operator,right_expression)
+		
+		self.binary_operation_parser.action = catch_action
+		
+	def _parse(self,stream):
+		return self.binary_operation_parser(stream)
+
 class PrefixOperation(Parser):
 	def action(self,operator,expression):
-		return 'begin\n%soperator %s\n'%(expression,operator.name)
+		return ['prefix-operation', operator, expression]
 	
 	def __init__(self,operator_parser,higher_priority_expression_parser):
 		self.operator_parser = ZeroOrMore(operator_parser,lambda ops : ops)
@@ -164,7 +179,7 @@ class PrefixOperation(Parser):
 
 class PostfixOperation(Parser):
 	def action(self,expression,operator):
-		return 'begin\n%soperator %s\n' % (expression,operator)
+		return ['postfix-operation', expression, operator]
 	
 	def __init__(self,operator_parser,higher_priority_expression_parser):
 		self.operator_parser = ZeroOrMore(operator_parser, lambda ops: ops)
@@ -184,7 +199,7 @@ class PostfixOperation(Parser):
 
 class FunctionCall(PostfixOperation):
 	def action(self,expression,arguments):
-		return 'begin\n%s%scall_function\n' % (expression,''.join(arguments))
+		return ['function-call', expression, arguments]
 	
 	def __init__(self,higher_priority_expression_parser):
 		self.operator_parser = ZeroOrMore(And((
@@ -253,43 +268,75 @@ def lex(string):
 		else:
 			m = err_regex.match(string,i)
 			t = Token('err',string,m.group(),m.start(),m.end())
-			print('Unrecognized token on line %s: %s\n%s'%
+			raise ParseException('Unrecognized token on line %s: %s\n%s'%
 				(t.line_number, t, t.line))
 	
 	yield Token('eof',string,'',len(string),len(string))
 
-
-
-
-
 keywords = set()
 symbols = set()
 
-Keyword('for') # keyword must be non-empty match
-Symbol('*')    # symbol must be non-empty match
-
 Expression = Proxy()
+Expressions = ZeroOrMore(Expression, lambda expressions : expressions)
+Statement = Proxy()
+Statements = ZeroOrMore(Statement, lambda statements : statements)
 
-Int = Action(TokenTypeMatcher('int'),lambda s : 'load int '+s+'\n')
-Float = Action(TokenTypeMatcher('float'),lambda s : 'load float '+s+'\n')
-Str = Action(TokenTypeMatcher('str'),
-	lambda s : 'load string '+str(len(eval(s)))+' '+' '.join(str(ord(c)) for c in eval(s))+'\n')
-Name = Action(TokenTypeMatcher('name'),lambda s : 'load variable '+s+'\n')
+Int = Action(TokenTypeMatcher('int'),lambda s : ['int',s])
+Float = Action(TokenTypeMatcher('float'),lambda s : ['float',s])
+Str = Action(TokenTypeMatcher('str'), lambda s : ['str',s])
+Name = Action(TokenTypeMatcher('name'),lambda s : ['variable',s])
 ParentheticalExpression = And((Symbol('('),Expression,Symbol(')')),lambda l, x, r: x)
+ListLiteralExpression = And((Symbol('{'),Expressions,Symbol('}')),lambda l,x,r:['list-literal',x])
+FunctionLiteralExpression = And(
+	(Keyword('def'),
+		Symbol('['),
+		ZeroOrMore(Name,lambda names : names),
+		Symbol(']'),
+		Statements,
+		Keyword('end')),
+	lambda def_, lb, args, rb, body, end_: ['function-literal', args, body])
+
 PrimaryExpression = Or((Int,Float,Str,Name,ParentheticalExpression))
 
 Expression.set_parser(
 	BinaryOperation(
+		'right',
+		Symbol('='),
+	TernaryOperation(
 		'left',
-		Or((Symbol('+','add'),Symbol('-','subtract'))),
+		Symbol('?'),Symbol(':'),
 	BinaryOperation(
 		'left',
-		Or((Symbol('*','multiply'),Symbol('/','divide'),Symbol('%','modulo'))),
+		Symbol('||'),
+	BinaryOperation(
+		'left',
+		Symbol('&&'),
+	BinaryOperation(
+		'left',
+		Or((Symbol('+'),Symbol('-'))),
+	BinaryOperation(
+		'left',
+		Or((Symbol('*'),Symbol('/'),Symbol('%'))),
 	BinaryOperation(
 		'right',
-		Symbol('**','exponent'),
+		Symbol('**'),
+	PrefixOperation(
+		Or((Symbol('+'),Symbol('-'))),
 	FunctionCall(
-		PrimaryExpression)))))
+	PrimaryExpression))))))))))
+
+
+ExpressionStatement = Action(Expression,lambda expression : ['expression', expression])
+
+IfElseStatement = And(
+	(Keyword('if'),Expression,Statements,Keyword('else'),Statements,Keyword('end')),
+	lambda if_, condition, if_body, else_, else_body, end_: ['if-else',condition,if_body,else_body])
+
+WhileStatement = And(
+	(Keyword('while'),Expression,Statements,Keyword('end')),
+	lambda while_, condition, body, end_: ['while',condition,body])
+
+Statement.set_parser(Or((ExpressionStatement,IfElseStatement,WhileStatement)))
 
 token_types = {
 	'int' : r'\d+(?!\.)',
@@ -303,9 +350,22 @@ token_types = {
 		r"r\'[^']*\'")),
 	'symbol' : '|'.join('(?:'+re.escape(symbol)+')' for symbol in reversed(sorted(symbols))),
 }
-ignore_regex = re.compile(r'(?:(?:[ \t]+)|(?:\#[^\n]*))*')
+ignore_regex = re.compile(r'(?:(?:\s+)|(?:\#[^\n]*))*')
 err_regex = re.compile(r'\S+')
 for token_type, regex_string in token_types.items():
 	token_types[token_type] = re.compile(regex_string)
 
-print(Expression(TokenStream(lex('"hello" + "there" * 5 * f(6)'))))
+statements = Statements(TokenStream(lex('''
+if 1
+	f[2]
+else
+	3
+end
+
+f = def [a b c]
+	
+end
+
+''')))
+for statement in statements:
+	print(statement)
