@@ -2,15 +2,18 @@ import re
 
 class Parser(object):
 	def __call__(self,stream):
-		save = stream.position
+		save = stream.save()
 		result = self._parse(stream)
 		if result is None:
-			stream.position = save
+			stream.load(save)
 		return result
+
+class Proxy(Parser):
+	def set_parser(self,parser):
+		self.parser = parser
 	
-	def set_parse_action(self,action):
-		self.action = action
-		return self
+	def _parse(self,stream):
+		return self.parser(stream)
 
 class TokenConditionMatcher(Parser):
 	def __init__(self,condition):
@@ -19,6 +22,16 @@ class TokenConditionMatcher(Parser):
 	def _parse(self,stream):
 		if self.condition(stream.peek()):
 			return next(stream)
+
+class Action(Parser):
+	def __init__(self,parser,action):
+		self.parser = parser
+		self.action = action
+	
+	def _parse(self,stream):
+		result = self.parser(stream)
+		if result is not None:
+			return self.action(result)
 
 class TokenMatcher(TokenConditionMatcher):
 	def __init__(self,token):
@@ -36,9 +49,16 @@ class Keyword(TokenMatcher):
 		keywords.add(keyword)
 
 class Symbol(TokenMatcher):
-	def __init__(self,symbol):
+	def __init__(self,symbol,name=None):
 		super(Symbol,self).__init__(symbol)
 		symbols.add(symbol)
+		self.name = name
+	
+	def _parse(self,stream):
+		result = super(Symbol,self)._parse(stream)
+		if result is not None:
+			result.name = self.name
+			return result
 
 class Or(Parser):
 	def __init__(self,parsers):
@@ -51,8 +71,9 @@ class Or(Parser):
 				return result
 
 class And(Parser):
-	def __init__(self,parsers):
+	def __init__(self,parsers,action):
 		self.parsers = parsers
+		self.action = action
 	
 	def _parse(self,stream):
 		results = []
@@ -64,8 +85,9 @@ class And(Parser):
 		return self.action(*results)
 
 class ZeroOrMore(Parser):
-	def __init__(self,parser):
+	def __init__(self,parser,action):
 		self.parser = parser
+		self.action = action
 	
 	def _parse(self,stream):
 		parser = self.parser
@@ -78,18 +100,22 @@ class ZeroOrMore(Parser):
 		return self.action(results)
 
 class BinaryOperation(Parser):
-	def __init__(self,operator_parser,higher_priority_expression_parser,associativity='left'):
-		self.operator_parser = operator_parser
-		self.higher_priority_expression_parser = higher_priority_expression_parser
-		self.associativity = associativity
+	def action(self,left,operator,right):
+		return 'begin\n%s%scall %s\n' % (left,right,operator.name)
+	
+	def __init__(self,associativity,operator_parser,higher_priority_expression_parser):
 		if associativity not in ('left','right'):
 			raise ParseException('"%s" is not a valid associativity' % associativity)
+		
+		self.associativity = associativity
+		self.operator_parser = operator_parser
+		self.higher_priority_expression_parser = higher_priority_expression_parser
 	
 	def _parse(self,stream):
 		higher_priority_expression_parser = self.higher_priority_expression_parser
 		operator_parser = self.operator_parser
-		action = self.action
 		associativity = self.associativity
+		action = self.action
 		
 		e = higher_priority_expression_parser(stream)
 		if e is None:
@@ -99,7 +125,7 @@ class BinaryOperation(Parser):
 			op = operator_parser(stream)
 			if op is None:
 				break
-			terms.append(e)
+			terms.append(op)
 			e = higher_priority_expression_parser(stream)
 			if e is None:
 				return
@@ -117,8 +143,11 @@ class BinaryOperation(Parser):
 		return e
 
 class PrefixOperation(Parser):
+	def action(self,operator,expression):
+		return 'begin\n%scall %s\n'%(expression,operator.name)
+	
 	def __init__(self,operator_parser,higher_priority_expression_parser):
-		self.operator_parser = ZeroOrMore(operator_parser).set_parse_action(lambda ops : ops)
+		self.operator_parser = ZeroOrMore(operator_parser,lambda ops : ops)
 		self.higher_priority_expression_parser = higher_priority_expression_parser
 	
 	def _parse(self,stream):
@@ -134,17 +163,27 @@ class PrefixOperation(Parser):
 			return e
 
 class PostfixOperation(Parser):
+	def action(self,expression,operator):
+		return 'begin\n%scall %s\n' % (expression,operator)
+	
 	def __init__(self,operator_parser,higher_priority_expression_parser):
-		self.operator_parser = operator_parser
+		self.operator_parser = ZeroOrMore(operator_parser, lambda ops: ops)
 		self.higher_priority_expression_parser = higher_priority_expression_parser
 	
 	def _parse(self,stream):
 		operator_parser = self.operator_parser
 		higher_priority_expression_parser = self.higher_priority_expression_parser
+		action = self.action
 		
+		e = higher_priority_expression_parser(stream)
+		if e is not None:
+			operators = self.operator_parser(stream)
+			for op in operators:
+				e = action(e,op)
+			return e
 
 class Token(str):
-	def __init__(self,type_,whole_string,token_string,start,end):
+	def __new__(cls,type_,whole_string,token_string,start,end):
 		self = super(Token,cls).__new__(cls,token_string)
 		self.type_ = type_
 		self.whole_string = whole_string
@@ -173,6 +212,12 @@ class TokenStream(object):
 	def peek(self):
 		return self.token_list[self.position]
 	
+	def save(self):
+		return self.position
+	
+	def load(self,position):
+		self.position = position
+	
 	def next(self):
 		return self.__next__()
 	
@@ -198,6 +243,8 @@ def lex(string):
 			t = Token('err',string,m.group(),m.start(),m.end())
 			print('Unrecognized token on line %s: %s\n%s'%
 				(t.line_number, t, t.line))
+	
+	yield Token('eof',string,'',len(string),len(string))
 
 
 
@@ -206,9 +253,29 @@ def lex(string):
 keywords = set()
 symbols = set()
 
+Keyword('for') # keyword must be non-empty match
+Symbol('*')    # symbol must be non-empty match
 
+Expression = Proxy()
 
+Int = Action(TokenTypeMatcher('int'),lambda s : 'load int '+s+'\n')
+Float = Action(TokenTypeMatcher('float'),lambda s : 'load float '+s+'\n')
+Str = Action(TokenTypeMatcher('str'),lambda s : 'load string "'+''.join('\\'+hex(ord(c))[1:] for c in eval(s))+'"\n')
+Name = Action(TokenTypeMatcher('name'),lambda s : 'load variable '+s+'\n')
+ParentheticalExpression = And((Symbol('('),Expression,Symbol(')')),lambda l, x, r: x)
+PrimaryExpression = Or((Int,Float,Str,Name,ParentheticalExpression))
 
+Expression.set_parser(
+	BinaryOperation(
+		'left',
+		Or((Symbol('+','add'),Symbol('-','subtract'))),
+	BinaryOperation(
+		'left',
+		Or((Symbol('*','multiply'),Symbol('/','divide'),Symbol('%','modulo'))),
+	BinaryOperation(
+		'right',
+		Symbol('**','exponent'),
+	PrimaryExpression))))
 
 token_types = {
 	'int' : r'\d+(?!\.)',
@@ -224,5 +291,7 @@ token_types = {
 }
 ignore_regex = re.compile(r'(?:(?:[ \t]+)|(?:\#[^\n]*))*')
 err_regex = re.compile(r'\S+')
+for token_type, regex_string in token_types.items():
+	token_types[token_type] = re.compile(regex_string)
 
-
+print(Expression(TokenStream(lex('"hello" + "there" * 5 * 6'))))
