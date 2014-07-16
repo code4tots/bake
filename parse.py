@@ -101,7 +101,7 @@ class ZeroOrMore(Parser):
 
 class BinaryOperation(Parser):
 	def action(self,left,operator,right):
-		return 'begin\n%s%scall %s\n' % (left,right,operator.name)
+		return 'begin\n%s%soperator %s\n' % (left,right,operator.name)
 	
 	def __init__(self,associativity,operator_parser,higher_priority_expression_parser):
 		if associativity not in ('left','right'):
@@ -144,7 +144,7 @@ class BinaryOperation(Parser):
 
 class PrefixOperation(Parser):
 	def action(self,operator,expression):
-		return 'begin\n%scall %s\n'%(expression,operator.name)
+		return 'begin\n%soperator %s\n'%(expression,operator.name)
 	
 	def __init__(self,operator_parser,higher_priority_expression_parser):
 		self.operator_parser = ZeroOrMore(operator_parser,lambda ops : ops)
@@ -164,7 +164,7 @@ class PrefixOperation(Parser):
 
 class PostfixOperation(Parser):
 	def action(self,expression,operator):
-		return 'begin\n%scall %s\n' % (expression,operator)
+		return 'begin\n%soperator %s\n' % (expression,operator)
 	
 	def __init__(self,operator_parser,higher_priority_expression_parser):
 		self.operator_parser = ZeroOrMore(operator_parser, lambda ops: ops)
@@ -181,6 +181,18 @@ class PostfixOperation(Parser):
 			for op in operators:
 				e = action(e,op)
 			return e
+
+class FunctionCall(PostfixOperation):
+	def action(self,expression,arguments):
+		return 'begin\n%s%scall_function\n' % (expression,''.join(arguments))
+	
+	def __init__(self,higher_priority_expression_parser):
+		self.operator_parser = ZeroOrMore(And((
+				Symbol('['),
+				ZeroOrMore(Expression,lambda args : args),
+				Symbol(']')),
+					lambda lb, args, rb : args), lambda ops : ops)
+		self.higher_priority_expression_parser = higher_priority_expression_parser
 
 class Token(str):
 	def __new__(cls,type_,whole_string,token_string,start,end):
@@ -260,7 +272,8 @@ Expression = Proxy()
 
 Int = Action(TokenTypeMatcher('int'),lambda s : 'load int '+s+'\n')
 Float = Action(TokenTypeMatcher('float'),lambda s : 'load float '+s+'\n')
-Str = Action(TokenTypeMatcher('str'),lambda s : 'load string "'+''.join('\\'+hex(ord(c))[1:] for c in eval(s))+'"\n')
+Str = Action(TokenTypeMatcher('str'),
+	lambda s : 'load string '+str(len(eval(s)))+' '+' '.join(str(ord(c)) for c in eval(s))+'\n')
 Name = Action(TokenTypeMatcher('name'),lambda s : 'load variable '+s+'\n')
 ParentheticalExpression = And((Symbol('('),Expression,Symbol(')')),lambda l, x, r: x)
 PrimaryExpression = Or((Int,Float,Str,Name,ParentheticalExpression))
@@ -275,7 +288,8 @@ Expression.set_parser(
 	BinaryOperation(
 		'right',
 		Symbol('**','exponent'),
-	PrimaryExpression))))
+	FunctionCall(
+		PrimaryExpression)))))
 
 token_types = {
 	'int' : r'\d+(?!\.)',
@@ -294,4 +308,4 @@ err_regex = re.compile(r'\S+')
 for token_type, regex_string in token_types.items():
 	token_types[token_type] = re.compile(regex_string)
 
-print(Expression(TokenStream(lex('"hello" + "there" * 5 * 6'))))
+print(Expression(TokenStream(lex('"hello" + "there" * 5 * f(6)'))))
