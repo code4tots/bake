@@ -110,6 +110,18 @@ class ZeroOrMore(Parser):
 			results.append(result)
 		return self.action(results)
 
+class OneOrMore(Parser):
+	def catch_action(self,matches):
+		if len(matches) > 0:
+			return self.action(matches)
+	
+	def __init__(self,parser,action):
+		self.zero_or_more_parser = ZeroOrMore(parser,self.catch_action)
+		self.action = action
+	
+	def _parse(self,stream):
+		return self.zero_or_more_parser(stream)
+
 class BinaryOperation(Parser):
 	def action(self,left,operator,right):
 		return Ast('%s.%s(%s)'%(left,operator.name,right))
@@ -353,6 +365,10 @@ Expression.set_parser(
 
 ExpressionStatement = Action(Expression,lambda e:Ast(e+';'))
 
+Declaration = And((Keyword('var'),OneOrMore(
+	And((Name,Symbol('='),Expression),lambda name, eq_, expr: Ast('%s=%s'%(name,expr))),
+	lambda decls : 'Pointer '+','.join(decls)+';'),Symbol(';')),lambda var_,decls,semiclon: decls)
+
 IfElse = And(
 	(Keyword('if'),Expression,Statements,Keyword('else'),Statements,Keyword('end')),
 	lambda if_, condition, if_body, else_, else_body, end_: Ast(
@@ -362,7 +378,7 @@ While = And(
 	(Keyword('while'),Expression,Statements,Keyword('end')),
 	lambda while_, condition, body, end_: Ast('while(%s)%s'%(condition,body)))
 
-Statement.set_parser(Or((ExpressionStatement,IfElse,While)))
+Statement.set_parser(Or((Declaration,ExpressionStatement,IfElse,While)))
 
 All = And(
 	(

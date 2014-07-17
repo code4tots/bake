@@ -1,3 +1,6 @@
+var x = 12 y = "go" z = 23;
+
 print['hello' 'world']
 print['hello again']
 print[ 1+2 3.2]
+print[x y]
