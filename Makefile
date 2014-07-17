@@ -12,3 +12,5 @@ cake.cpp: stub.cpp cream.cpp
 cream.cpp: cake.bake bake.py
 	python3 bake.py
 
+clean:
+	rm -rf a.out cake.cpp cream.cpp

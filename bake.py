@@ -307,7 +307,7 @@ Statements = ZeroOrMore(Statement, lambda statements : Ast('{'+''.join(statement
 
 Int = Action(TokenTypeMatcher('int'),lambda s : Ast('Pointer::new_int('+s+')'))
 Float = Action(TokenTypeMatcher('float'),lambda s : Ast('Pointer::new_float('+s+')'))
-Str = Action(TokenTypeMatcher('str'), lambda s : Ast('(Pointer::new_str("'+s+'")'))
+Str = Action(TokenTypeMatcher('str'), lambda s : Ast('Pointer::new_str("'+''.join('\\'+hex(ord(c))[1:] for c in eval(s))+'")'))
 Name = Action(TokenTypeMatcher('name'),lambda s : (lambda s: Ast(s))('x_x'+s))
 ParentheticalExpression = And((Symbol('('),Expression,Symbol(')')),lambda l, x, r: x)
 ListLiteralExpression = And((Symbol('{'),Expressions,Symbol('}')),lambda l,x,r: Ast('Pointer::new_list({'+x+'})'))
@@ -380,8 +380,7 @@ token_types = {
 		r"\'(?:[^']|(?:\\\'))*\'",
 		r'r\"[^"]*\"',
 		r"r\'[^']*\'")),
-	'symbol' : '|'.join('(?:'+re.escape(symbol)+')' for symbol in reversed(sorted(symbols))),
-}
+	'symbol' : '|'.join('(?:'+re.escape(symbol)+')' for symbol in reversed(sorted(symbols)))}
 ignore_regex = re.compile(r'(?:(?:\s+)|(?:\#[^\n]*))*')
 err_regex = re.compile(r'\S+')
 for token_type, regex_string in token_types.items():
