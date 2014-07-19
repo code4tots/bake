@@ -3,3 +3,7 @@ var f = \ x {
 }
 var z = list 1 2 3 end
 f[z]
+
+while (1) {
+	f[z]
+}

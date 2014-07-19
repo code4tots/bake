@@ -249,6 +249,7 @@ def build_parser():
 			self.parser = OnSuccess(And(ZeroOrMore(op_parser),parser),_action)
 	Expression = Proxy()
 	Statement = Proxy()
+	StatementBlock = OnSuccess(And(Symbol('{'),ZeroOrMore(Statement),Symbol('}')),lambda xs :'{'+''.join(xs[1])+'}')
 	Name = OnSuccess(TokenOfType('name'),lambda x : 'x_x'+x)
 	ListLiteral = OnSuccess(
 		And(Keyword('list'),ZeroOrMore(Expression),Keyword('end')),
@@ -295,7 +296,11 @@ def build_parser():
 	Declaration = OnSuccess(And(Keyword('var'),
 		SeparatedBy(Symbol(','),
 			And(Name,Optional(And(Symbol('='),Expression))))),action)
-	Statement.parser = Or(Declaration,ExpressionStatement)
+	def action(xs):
+		while_, condition, block = xs
+		return 'while(%s)%s'%(condition,block)
+	While = OnSuccess(And(Keyword('while'),Expression,StatementBlock),action)
+	Statement.parser = Or(Declaration,ExpressionStatement,While)
 	TranslationUnit = OnSuccess(ZeroOrMore(Statement),lambda xs : ''.join(xs))
 	lexer = build_lexer(keywords,symbols)
 	return lambda string : TranslationUnit(lexer(string))
