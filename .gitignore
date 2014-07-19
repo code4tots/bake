@@ -2,7 +2,5 @@ cream.cpp
 *.out
 *.pyc
 cake.cpp
-stub.cpp
-cxxsrcs/stub.cpp
 *~
 \#*#
