@@ -10,7 +10,7 @@ cake.cpp: stub.cpp cream.cpp
 	cat stub.cpp cream.cpp > cake.cpp
 
 cream.cpp: cake.bake bake.py
-	python3 bake.py
+	python3 bake.py cake.bake cream.cpp
 
 clean:
 	rm -rf a.out cake.cpp cream.cpp
