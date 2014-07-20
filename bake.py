@@ -1,4 +1,7 @@
 import re
+class ParseException(Exception):
+	pass
+
 def build_lexer(keywords,symbols):
 	"""Build the lexer
 	Building the lexer is done inside a function because we need to know all
@@ -211,7 +214,9 @@ def build_parser():
 	class BinaryOperation(Proxy):
 		def __init__(self,op_parser,parser):
 			def action(xs):
-				return [i for s in xs for i in s]
+				r = [xs[0][0]]
+				r.extend([i for s in xs[1] for i in s])
+				return r
 			def singleton(x):
 				return [x]
 			self.parser = OnSuccess(And(OnSuccess(parser,singleton),ZeroOrMore(And(op_parser,parser))),action)
@@ -282,7 +287,20 @@ def build_parser():
 			And(Symbol('['),Expression,Symbol('='),Expression,Symbol(']')),
 			And(Symbol('['),ZeroOrMore(Expression),Symbol(']'))),
 		PrimaryExpression)
-	Expression.parser = PrimaryPostfixExpression
+	def binary_expression_action(lhs,op,rhs):
+		return '%s.%s(%s)'%(lhs,op.name,rhs)
+	Expression.parser = RightAssociativeBinaryOperation(
+		binary_expression_action,
+		Or(
+			Named('iadd',Symbol('+=')),
+			Named('isub',Symbol('-='))),
+		LeftAssociativeBinaryOperation(
+			binary_expression_action,
+			Or(
+				Named('add',Symbol('+')),
+				Named('sub',Symbol('-'))),
+			
+			PrimaryPostfixExpression))
 	ExpressionStatement = OnSuccess(Expression,lambda e : e+';')
 	def action(xs):
 		x, xs = xs

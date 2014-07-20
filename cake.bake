@@ -1,9 +1,14 @@
-var f = \ x {
+var print = \ x {
 	x.print
 }
 var z = list 1 2 3 end
-f[z]
+z.print
+z -= 1
+z.print
 
-while (1) {
-	f[z]
+while z {
+	z -= 1
+	z.print
+	(z+z).print
 }
+

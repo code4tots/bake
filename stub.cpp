@@ -190,7 +190,7 @@ struct Pointer {
 			return sp;
 		}
 		case FUNC_TYPE:
-			
+			return new_str("<function>");
 		default          : return new_str("not implemented");
 		}
 	}
@@ -249,6 +249,20 @@ struct Pointer {
 				get_cxxset().insert(ls.begin(),ls.end());
 				return *this;
 			}
+			default:
+				throw NotSupported();
+			}
+		default:
+			throw NotSupported();
+		}
+	}
+	Pointer isub(const Pointer& p) {
+		switch(type) {
+		case INT_TYPE:
+			switch(type) {
+			case INT_TYPE:
+				get_cxxint() -= p.get_cxxint();
+				return *this;
 			default:
 				throw NotSupported();
 			}
