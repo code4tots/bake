@@ -9,6 +9,7 @@
 #include <iostream>
 #include <fstream>
 #include <algorithm>
+#define BAFFLED throw NotSupported("baffled"); // useful for quieting warnings "control reaches end of non-void function"
 enum Type { NIL_TYPE, BOOL_TYPE, INT_TYPE, FLOAT_TYPE, STR_TYPE, LIST_TYPE, SET_TYPE, DICT_TYPE, FUNC_TYPE };
 struct Pointer;
 typedef std::initializer_list<Pointer>   Args;
@@ -27,7 +28,11 @@ namespace std {
 	template <> struct equal_to<Pointer> { bool operator()(const Pointer&,const Pointer&) const; };
 	template <> struct less<Pointer> { bool operator()(const Pointer&,const Pointer&) const; };
 }
-struct NotSupported {};
+struct NotSupported {
+	std::string msg;
+	NotSupported(const std::string& s) : msg(s) {}
+	std::string message() { return msg; }
+};
 struct Pointer {
 	Type type;
 	void * value;
@@ -42,6 +47,22 @@ struct Pointer {
 	cxxset&    get_cxxset   () const { return *((cxxset*)value); }
 	cxxdict&   get_cxxdict  () const { return *((cxxdict*)value); }
 	cxxfunc&   get_cxxfunc  () const { return *((cxxfunc*)value); }
+	
+	// Get the name of a given type. Useful for debugging.
+	static std::string cxxtypename(Type t) {
+		switch(t) {
+		case NIL_TYPE: return "nil";
+		case BOOL_TYPE: return "bool";
+		case INT_TYPE: return "int";
+		case FLOAT_TYPE: return "float";
+		case STR_TYPE: return "str";
+		case LIST_TYPE: return "list";
+		case SET_TYPE: return "set";
+		case DICT_TYPE: return "dict";
+		case FUNC_TYPE: return "func";
+		}
+		throw NotSupported("invalid type name");
+	}
 	
 	// API for new objects with given values.
 	// In the future, I may have a more sophisticated memory management schemes.
@@ -71,8 +92,13 @@ struct Pointer {
 		case DICT_TYPE  : return get_cxxdict().size() != 0;
 		case FUNC_TYPE  : return true;
 		}
-		throw NotSupported();
+		invalid_types_in("operator bool",{*this});
+		BAFFLED;
 	}
+	
+	// For those C++ things that don't use equal_to<Pointer> or less<Pointer>
+	bool operator==(const Pointer& p) const { return eq(p).get_cxxbool(); }
+	bool operator<(const Pointer& p) const { return lt(p).get_cxxbool(); }
 	
 	// make a copy of this
 	Pointer copy() const {
@@ -87,7 +113,15 @@ struct Pointer {
 		case DICT_TYPE  : return new_dict(get_cxxdict());
 		case FUNC_TYPE  : return new_func(get_cxxfunc());
 		}
-		throw NotSupported();
+		invalid_types_in("copy",{*this});
+		BAFFLED;
+	}
+	
+	static void invalid_types_in(std::string method_name, std::vector<Pointer> args) {
+		std::string msg("invalid types in " + method_name + ": ");
+		for (Pointer p : args)
+			msg += p.repr().get_cxxstr() + " ";
+		throw NotSupported(msg);
 	}
 	
 	// ----------------------- methods for use in the language itself ------------------------
@@ -105,18 +139,65 @@ struct Pointer {
 		case DICT_TYPE  : return new_int(get_cxxdict().size());
 		case FUNC_TYPE  : return new_int((size_t)value);
 		}
-		throw NotSupported();
+		invalid_types_in("hash",{*this});
+		BAFFLED;
 	}
 	Pointer eq(const Pointer& p) const {
-		return new_bool(this == p.value);
+		switch(type) {
+		case NIL_TYPE:
+			return new_bool(p.type == NIL_TYPE);
+		case BOOL_TYPE:
+			return new_bool(p.type == BOOL_TYPE && get_cxxbool() == p.get_cxxbool());
+		case INT_TYPE:
+			return new_bool(
+				(p.type == INT_TYPE && get_cxxint() == p.get_cxxint()) ||
+				(p.type == FLOAT_TYPE && get_cxxint().get_d() == p.get_cxxfloat()));
+		case FLOAT_TYPE:
+			return new_bool(
+				(p.type == INT_TYPE && get_cxxfloat() == p.get_cxxint().get_d()) ||
+				(p.type == FLOAT_TYPE && get_cxxfloat() == p.get_cxxfloat()));
+		case STR_TYPE:
+			return new_bool(p.type == STR_TYPE && get_cxxstr() == p.get_cxxstr());
+		case LIST_TYPE:
+			return new_bool(p.type == LIST_TYPE && std::equal(get_cxxlist().begin(),get_cxxlist().end(),p.get_cxxlist().begin()));
+		case SET_TYPE:
+			return new_bool(p.type == SET_TYPE && get_cxxset() == p.get_cxxset());
+		case DICT_TYPE:
+			return new_bool(p.type == DICT_TYPE && get_cxxdict() == p.get_cxxdict());
+		case FUNC_TYPE:
+			return new_bool(this == p.value);
+		}
+		invalid_types_in("eq",{*this,p});
+		BAFFLED;
 	}
 	Pointer lt(const Pointer& p) const {
-		return new_bool(false);
+		switch(type) {
+		case INT_TYPE:
+			switch(p.type) {
+			case INT_TYPE:
+				return new_bool(get_cxxint() < p.get_cxxint());
+			default:
+				break;
+			}
+		default:
+			break;
+		}
+		invalid_types_in("lt",{*this,p});
+		BAFFLED;
+	}
+	
+	// Get the name of the type of a given object.
+	Pointer _typename() const {
+		return new_str(cxxtypename(type));
 	}
 	
 	// Printing to screen
 	Pointer print() const {
 		std::cout << str().get_cxxstr() << std::endl;
+		return *this;
+	}
+	Pointer write() const {
+		std::cout << str().get_cxxstr();
 		return *this;
 	}
 	Pointer str() const {
@@ -133,7 +214,8 @@ struct Pointer {
 		case STR_TYPE:
 			return *this;
 		}
-		throw NotSupported();
+		invalid_types_in("str",{*this});
+		BAFFLED;
 	}
 	Pointer repr() const {
 		switch(type) {
@@ -195,8 +277,32 @@ struct Pointer {
 		}
 	}
 	
+	// Container size
+	Pointer size() const {
+		switch(type) {
+		case LIST_TYPE:
+			return new_int(get_cxxlist().size());
+		case SET_TYPE:
+			return new_int(get_cxxset().size());
+		case DICT_TYPE:
+			return new_int(get_cxxdict().size());
+		default:
+			invalid_types_in("size",{*this});
+		}
+		BAFFLED;
+	}
+	
 	// Function call
-	Pointer call(Args args) const { return get_cxxfunc()(args); }
+	Pointer call(Args args) const {
+		if (type == LIST_TYPE && args.size() == 1 && args.begin()->type == INT_TYPE)
+			return get_cxxlist()[args.begin()->get_cxxint().get_ui()];
+		
+		if (type == FUNC_TYPE)
+			return get_cxxfunc()(args);
+		
+		invalid_types_in("call",{*this});
+		BAFFLED;
+	}
 	
 	// Arithmetic operators
 	Pointer iadd(const Pointer& p) {
@@ -209,7 +315,7 @@ struct Pointer {
 			case FLOAT_TYPE:
 				return *this = new_float(get_cxxint().get_d() + p.get_cxxfloat());
 			default:
-				throw NotSupported();
+				invalid_types_in("iadd",{*this,p});
 			}
 		case FLOAT_TYPE:
 			switch(p.type) {
@@ -220,7 +326,7 @@ struct Pointer {
 				get_cxxfloat() += p.get_cxxfloat();
 				return *this;
 			default:
-				throw NotSupported();
+				invalid_types_in("iadd",{*this,p});
 			}
 		case STR_TYPE:
 			switch(p.type) {
@@ -230,7 +336,7 @@ struct Pointer {
 				return *this;
 			}
 			default:
-				throw NotSupported();
+				invalid_types_in("iadd",{*this,p});
 			}
 		case LIST_TYPE:
 			switch(p.type) {
@@ -240,7 +346,7 @@ struct Pointer {
 				return *this;
 			}
 			default:
-				throw NotSupported();
+				invalid_types_in("iadd",{*this,p});
 			}
 		case SET_TYPE:
 			switch(p.type) {
@@ -250,11 +356,12 @@ struct Pointer {
 				return *this;
 			}
 			default:
-				throw NotSupported();
+				invalid_types_in("iadd",{*this,p});
 			}
 		default:
-			throw NotSupported();
+			invalid_types_in("iadd",{*this,p});
 		}
+		BAFFLED;
 	}
 	Pointer isub(const Pointer& p) {
 		switch(type) {
@@ -264,11 +371,12 @@ struct Pointer {
 				get_cxxint() -= p.get_cxxint();
 				return *this;
 			default:
-				throw NotSupported();
+				invalid_types_in("isub",{*this,p});
 			}
 		default:
-			throw NotSupported();
+			invalid_types_in("isub",{*this,p});
 		}
+		BAFFLED;
 	}
 	
 	Pointer add(const Pointer& p) const { return copy().iadd(p); }
@@ -286,5 +394,9 @@ namespace std {
 void bake();
 
 int main() {
-	bake();
+	try {
+		bake();
+	} catch(NotSupported e) {
+		std::cout << e.message() << std::endl;
+	}
 }

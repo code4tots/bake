@@ -1,4 +1,7 @@
 import re
+def show(x):
+	print(x)
+	return x
 class ParseException(Exception):
 	pass
 
@@ -26,6 +29,8 @@ def build_lexer(keywords,symbols):
 				b = len(whole_string)
 			self.line = whole_string[a:b]
 			
+			self.column_number = self.start - a
+			
 			return self
 			
 		def __repr__(self):
@@ -37,7 +42,7 @@ def build_lexer(keywords,symbols):
 			self.position = 0
 		
 		def peek(self):
-			return self.token_list[self.position]
+			return self.token_list[min(self.position,len(self.token_list)-1)]
 		
 		def save(self):
 			return self.position
@@ -84,8 +89,8 @@ def build_lexer(keywords,symbols):
 			else:
 				m = err_regex.match(string,i)
 				t = Token('err',string,m.group(),m.start(),m.end())
-				raise ParseException('Unrecognized token on line %s: %s\n%s'%
-					(t.line_number, t, t.line))
+				raise ParseException('Unrecognized token on line %s, column %s: %s\n%s\n%s'%
+					(t.line_number, t.column_number, repr(t), t.line, (t.column_number-1) * ' ' + '*'))
 		
 		yield Token('eof',string,'',len(string),len(string))
 	return lambda string : TokenStream(lex(string))
@@ -107,6 +112,22 @@ def build_parser():
 			self.parser = None
 		def _parse(self,stream):
 			return self.parser(stream)
+	class Empty(Parser):
+		def __init__(self,return_function):
+			self.return_function = return_function
+		def _parse(self,stream):
+			return self.return_function()
+	class Require(Parser):
+		def __init__(self,message,parser):
+			self.message = message
+			self.parser = parser
+		def _parse(self,stream):
+			result = self.parser(stream)
+			token = stream.peek()
+			if result is None:
+				raise ParseException(self.message + '\nOn line %s, column %s: %s\n%s\n%s' %
+					(token.line_number,token.column_number,repr(token),token.line,(token.column_number-1) * ' ' + '*'))
+			return result
 	class TokenSatisfying(Parser):
 		def __init__(self,condition):
 			self.condition = condition
@@ -266,20 +287,30 @@ def build_parser():
 		And(Keyword('dict'),ZeroOrMore(And(Expression,Expression)),Keyword('end')),
 		lambda xs : 'Pointer::new_dict({'+','.join('{'+x[0]+','+x[1]+'}' for x in xs[1])+'})')
 	FuncLiteral = OnSuccess(
-		And(Symbol('\\'),ZeroOrMore(Name),Symbol('{'),ZeroOrMore(Statement),Symbol('}')),
+		And(Symbol('\\'),ZeroOrMore(Name),
+			Or(OnSuccess(And(Symbol('*'),Name),lambda xs:xs[1]),Empty(lambda: 'rest')),
+			Symbol('{'),ZeroOrMore(Statement),Symbol('}')),
 		lambda xs :
 			'Pointer::new_func([&](Args args)->Pointer{'+
-				(('auto i=args.begin();Pointer '+','.join(x+'=*i++' for x in xs[1])+';') if xs[1] else '')+
-				''.join(xs[3])+'return Pointer::new_nil();})')
+				(('auto i=args.begin();Pointer '+','.join(x+'=*i++' for x in xs[1])+';') if xs[1] else 'auto i = args.begin();')+
+				'Pointer '+show(xs[2])+'=Pointer::new_list(cxxlist(i,args.end()));'+
+				''.join(xs[4])+'return Pointer::new_nil();})')
+	ParentheticalExpression = OnSuccess(
+		And(Symbol('('),
+			Require('expected expression for parenthetical expression',Expression),
+			Require('expected closing parenthesis',Symbol(')'))),
+		lambda x : x[1])
 	PrimaryExpression = Or(
+		OnSuccess(Keyword('nil'),lambda x : 'Pointer::new_nil()'),
+		OnSuccess(Or(Keyword('true'),Keyword('false')),lambda x : 'Pointer::new_bool('+str(x)+')'),
 		OnSuccess(TokenOfType('int'),lambda x : 'Pointer::new_int('+str(x)+')'),
 		OnSuccess(TokenOfType('float'), lambda x : 'Pointer::new_float('+str(x)+')'),
-		OnSuccess(TokenOfType('str'), lambda x : 'Pointer::new_str("'+''.join('\\'+hex(ord(c))[1:] for c in str(x)+'")')),
+		OnSuccess(TokenOfType('str'), lambda x : 'Pointer::new_str("'+''.join('\\'+hex(ord(c))[1:] for c in eval(x))+'")'),
 		Name,
-		OnSuccess(And(Symbol('('),Expression,Symbol(')')),lambda x : x[1]),
+		ParentheticalExpression,
 		ListLiteral,SetLiteral,DictLiteral,FuncLiteral)
 	PrimaryPostfixExpression = PostfixOperation((lambda e,op:
-			'%s.%s()'%(e,('_' if op[1] in ('int','float') else '')+op[1]) if op[0] == '.' else
+			'%s.%s()'%(e,('_' if op[1] in ('int','float','typename') else '')+op[1]) if op[0] == '.' else
 			'%s.setitem(%s,%s)'%(e,op[1],op[3]) if '=' in op else
 			'%s.call({%s})'%(e,','.join(op[1]))),
 		Or(
@@ -289,18 +320,27 @@ def build_parser():
 		PrimaryExpression)
 	def binary_expression_action(lhs,op,rhs):
 		return '%s.%s(%s)'%(lhs,op.name,rhs)
-	Expression.parser = RightAssociativeBinaryOperation(
-		binary_expression_action,
-		Or(
-			Named('iadd',Symbol('+=')),
-			Named('isub',Symbol('-='))),
+	Expression.parser = (
 		LeftAssociativeBinaryOperation(
 			binary_expression_action,
 			Or(
-				Named('add',Symbol('+')),
-				Named('sub',Symbol('-'))),
-			
-			PrimaryPostfixExpression))
+				Named('eq',Symbol('==')),
+				Named('lt',Symbol('<')),
+				Named('gt',Symbol('>')),
+				Named('le',Symbol('<=')),
+				Named('ge',Symbol('>='))),
+			RightAssociativeBinaryOperation(
+				binary_expression_action,
+				Or(
+					Named('iadd',Symbol('+=')),
+					Named('isub',Symbol('-='))),
+				LeftAssociativeBinaryOperation(
+					binary_expression_action,
+					Or(
+						Named('add',Symbol('+')),
+						Named('sub',Symbol('-'))),
+					
+					PrimaryPostfixExpression))))
 	ExpressionStatement = OnSuccess(Expression,lambda e : e+';')
 	def action(xs):
 		x, xs = xs
@@ -315,11 +355,15 @@ def build_parser():
 		SeparatedBy(Symbol(','),
 			And(Name,Optional(And(Symbol('='),Expression))))),action)
 	def action(xs):
+		name, eq, expr = xs
+		return '%s = %s;' % (name,expr)
+	Assignment = OnSuccess(And(Name,Symbol('='),Require('invalid expression in assignment',Expression)),action)
+	def action(xs):
 		while_, condition, block = xs
 		return 'while(%s)%s'%(condition,block)
 	While = OnSuccess(And(Keyword('while'),Expression,StatementBlock),action)
-	Statement.parser = Or(Declaration,ExpressionStatement,While)
-	TranslationUnit = OnSuccess(ZeroOrMore(Statement),lambda xs : ''.join(xs))
+	Statement.parser = Or(Assignment,Declaration,ExpressionStatement,While)
+	TranslationUnit = OnSuccess(And(ZeroOrMore(Statement),Require('invalid statement',TokenOfType('eof'))),lambda xs : ''.join(xs[0]))
 	lexer = build_lexer(keywords,symbols)
 	return lambda string : TranslationUnit(lexer(string))
 def main():
@@ -329,10 +373,16 @@ def main():
 	else:
 		with open(argv[1]) as f:
 			code = f.read()
-		cxx = build_parser()(code)
-		with open(argv[2],'w') as f:
-			f.write('void bake(){')
-			f.write(cxx)
-			f.write('}')
+		try:
+			cxx = build_parser()(code)
+			print(cxx)
+		except ParseException as e:
+			print(e)
+			exit(1)
+		else:
+			with open(argv[2],'w') as f:
+				f.write('void bake(){')
+				f.write(cxx)
+				f.write('}')
 if __name__ == '__main__':
 	main()

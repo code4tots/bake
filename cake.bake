@@ -1,14 +1,24 @@
-var print = \ x {
-	x.print
-}
-var z = list 1 2 3 end
-z.print
-z -= 1
-z.print
+# standard library for bake
 
-while z {
-	z -= 1
-	z.print
-	(z+z).print
+var print = \ * args {
+	var i = 0, s = ''
+	while i < args.size {
+		s += args[i].str
+		s += " "
+		i += 1
+	}
+	s.print
 }
 
+# playground
+var x = list end, i = 0
+
+while i < 1000000 {
+	x += list i.copy end
+	i += 1
+}
+x.print
+
+#real	0m0.896s
+#user	0m0.697s
+#sys	0m0.089s
